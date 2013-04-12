@@ -1,16 +1,21 @@
 package uk.ac.qmul.eecs.imccrowdapp;
 
-import android.util.Log;
-
-import java.util.Iterator;
-import java.util.List;
-import java.util.Date;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
 
-import org.json.*;
+import org.json.JSONException;
+import org.json.JSONObject;
 
-import com.loopj.android.http.*; // http://loopj.com/android-async-http/
+import android.util.Log;
+
+import com.loopj.android.http.AsyncHttpClient;
+import com.loopj.android.http.AsyncHttpResponseHandler;
+import com.loopj.android.http.JsonHttpResponseHandler;
+import com.loopj.android.http.RequestParams;
 
 class FileToUpload {
     String          path;
@@ -21,7 +26,7 @@ class FileToUpload {
     boolean         uploadInProgress;
 }
 
-public class ServerConnection {
+class ServerConnection {
     
 	private static final String TAG = "ServerConnection";
 	
@@ -34,10 +39,6 @@ public class ServerConnection {
     
     private String URLWithPath(String inPath)
     {
-    	if (inPath == "") 
-    	{
-    		inPath = "localhost:8888";
-    	}
     	return endPointURL + inPath;
     }
     
@@ -126,21 +127,24 @@ public class ServerConnection {
 	
 	public ServerConnection()
 	{
-	    setEndPointURL("");
+	    setEndPointURL("localhost:8888");
 	    
 	    sessionID = "";
 	    sessionActive = false;
 	    
 	    shouldUpload = false;
+	    
+	    uploadQueue = new LinkedList<FileToUpload>();
 	}
    
 	public void setEndPointURL(String inURL)
 	{
-		// FIXME: strings made sense in oF, now in java should be using url.normalize etc?
-		if(inURL.charAt(inURL.length()-1)!=File.separatorChar){
-			inURL += File.separator;
-		}
+//		// FIXME: strings made sense in oF, now in java should be using url.normalize etc?
+//		if(inURL.charAt(inURL.length()-1)!=File.separatorChar){
+//			inURL += File.separator;
+//		}
 		
+		Log.v(TAG, "Setting end point URL to " + inURL);
 		endPointURL = inURL;
 	}
 	
@@ -160,7 +164,7 @@ public class ServerConnection {
 	    }
 	    else
 	    {
-	    	Log.v(TAG, "new session ID not valid, ignoring");
+	    	Log.w(TAG, "new session ID not valid, ignoring");
 	    }
 	}
         
@@ -176,12 +180,13 @@ public class ServerConnection {
             @Override
             public void onSuccess(String responseString) {
                 // For now, response body is plain text assigned sessionID
+            	Log.v(TAG, "registerID succeeded with response: " + responseString);
                 setSessionID(responseString);
             }
         
             @Override
-            public void onFailure(Throwable e, String response) {
-            	Log.w(TAG, "registerID failed with response: " + response);
+            public void onFailure(Throwable e, String responseString) {
+            	Log.w(TAG, "registerID failed with response: " + responseString);
             }
         });
 	}

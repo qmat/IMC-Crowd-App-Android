@@ -5,11 +5,13 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Date;
 import java.util.EnumMap;
+import java.util.TimerTask;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import android.content.Context;
 import android.util.Log;
 
 class SensorData
@@ -60,11 +62,11 @@ class SensorData
     // TODO: More compact form ie. { time: xxx, accXYZPR: [x,y,z,p,r], locLtLnA: [lt, ln, a], comHXYZA
 }
 
-public class DataLogger {
+class DataLogger {
 
 	private static final String TAG = "DataLogger";
 	private int sensorDataArraySize;
-	private SensorData[] sensorDataArray; // TODO: Want to create circular buffer so memory isn't constantly allocated and deallocated. Need to confirm this is actually doing that, suspect it isn't if objects are pointers (spot the non-java person learning java).
+	private SensorData[] sensorDataArray;
 	private int sensorDataArrayIndex;
 	private String logsFolder;
 	
@@ -96,7 +98,7 @@ public class DataLogger {
 	    }
 	}
 
-	public void captureData()
+	void captureData()
 	{
 	    // TASK: Capture sensor data
 		sensorDataArray[sensorDataArrayIndex].clear();
@@ -147,5 +149,35 @@ public class DataLogger {
 	        
 		    sensorDataArrayIndex = -1;   
 	    }
+	}
+}
+
+class DataLoggerTask extends TimerTask
+{
+	private static final String TAG = "DataLoggerTask";
+	
+	DataLogger dataLogger;
+	
+	DataLoggerTask(Context context)
+	{
+		dataLogger = new DataLogger();
+		
+		File filesDir = context.getExternalFilesDir("sensorData");
+		if (filesDir == null)
+		{
+			Log.w(TAG, "Could not use external files dir, falling back to internal");
+			filesDir = context.getFilesDir();
+		}
+		if (filesDir == null)
+		{
+			Log.e(TAG, "Could not use files dir.");
+			// TODO: Alert dialog and quit?
+		}
+		dataLogger.setLogsFolder(filesDir.getPath());
+	}
+	
+	public void run() 
+	{
+		Log.d("DataLogTask", "Run called");
 	}
 }

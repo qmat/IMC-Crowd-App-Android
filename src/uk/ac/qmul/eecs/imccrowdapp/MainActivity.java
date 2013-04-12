@@ -1,40 +1,35 @@
 package uk.ac.qmul.eecs.imccrowdapp;
 
-import java.io.File;
-import java.util.Timer;
-import java.util.TimerTask;
-
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.os.PowerManager.WakeLock;
-import android.util.Log;
 import android.view.Menu;
 
 public class MainActivity extends Activity {
 
 	private final static String TAG = "IMCCrowdApp";
+	// Note on logging. Android sucks. Most accurate and concise: http://ogre.ikratko.com/archives/993
+	// To debug, you need to set the level on your development machine using "adb shell setprop log.tag.<YOUR_LOG_TAG> <LEVEL>" for all tags you want
+	// ie. in the terminal
+	// "/Path To Android that might have spaces in it so we're in quotes here/adt-bundle-mac-x86_64-20130219/sdk/platform-tools/adb" shell setprop log.tag.IMCCrowdApp VERBOSE
+	// To release, these Log calls will need to be qualified with "if (BuildConfig.DEBUG) Log..."
 	
 	private WakeLock wakeLock;
-	private DataLoggingManager dataLoggingManager;
-	
+		
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
 		
-		// TASK: Keep App running
+		// INFO: Stay alive strategy - Use PARTIAL_WAKE_LOCK and have our node of the crowd running as a service. 
+		// The power switch needn't affect us, and we can choose whether to start/stop the service with the GUI, or have it run fully in the background with start/stop control via any instance of the app.
 		
-		// PARTIAL_WAKE_LOCK will allow screen and keyboard to dim, but app/phone will still run
 		// If you hold a partial wake lock, the CPU will continue to run, regardless of any display timeouts or the state of the screen and even after the user presses the power button. 
 		PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
 		wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
-		wakeLock.acquire();
-		
-		// TASK: Start logging data
-		dataLoggingManager = new DataLoggingManager(this.getApplicationContext());
-		dataLoggingManager.start(100);
 	}
 
 	@Override
@@ -45,74 +40,25 @@ public class MainActivity extends Activity {
 	}
 	
 	@Override
+	public void onStart() {
+		super.onStart();
+		
+		// FIXME: As the activity is restarted on orientation change and stopped on screen dim, we need to start the service on first launch, if its not running already, and have a button to stop it. AFAIK there's no way to see the reason behind the onStop being called, to stop the service only on direct user intervention.
+		
+		// TASK: Don't let the phone sleep
+		wakeLock.acquire();
+		
+		// TASK: Start our node of the (assumed) crowd (the user is among)
+		startService(new Intent(this, CrowdNodeService.class));
+	}
+	
+	@Override
 	public void onStop() {
-		dataLoggingManager.stop();
+		
+		stopService(new Intent(this, CrowdNodeService.class));
+		
 		wakeLock.release();
-	}
-}
-
-
-class DataLoggingManager
-{
-	Context context;
-	Timer timer;
-	
-	DataLoggingManager(Context inContext)
-	{
-		context = inContext;
-	}
-	
-	class DataLogTask extends TimerTask
-	{
-		private static final String TAG = "DataLogTask";
 		
-		DataLogger dataLogger;
-		ServerConnection serverConnection;
-		
-		DataLogTask()
-		{
-			dataLogger = new DataLogger();
-			
-			File filesDir = context.getExternalFilesDir("sensorData");
-			if (filesDir == null)
-			{
-				Log.w(TAG, "Could not use external files dir, falling back to internal");
-				filesDir = context.getFilesDir();
-			}
-			if (filesDir == null)
-			{
-				Log.e(TAG, "Could not use files dir.");
-				// TODO: Alert dialog and quit?
-			}
-			dataLogger.setLogsFolder(filesDir.getPath());
-			
-			serverConnection = new ServerConnection();
-//			serverConnection.setEndPointURL(""); // TODO: Pull string from strings file kept locally, not in public source control
-//			serverConnection.startSession();
-//			serverConnection.startFileUploads();
-		}
-		
-		public void run() 
-		{
-			Log.v("DataLogTask", "Run called");
-		}
-	}
-	
-	public void start(int periodMicroSeconds)
-	{
-		if (timer != null) 
-		{
-			timer.cancel();
-			timer = null;
-		}
-		
-		timer = new Timer();
-		timer.schedule(new DataLogTask(), 0, periodMicroSeconds);
-	}
-	
-	public void stop()
-	{
-		timer.cancel();
-		timer = null;
+		super.onStop();
 	}
 }
