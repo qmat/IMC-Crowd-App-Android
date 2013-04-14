@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <string name="app_name">IMC Crowd App</string>
+    <string name="app_name">CogSci Crowd App</string>
     <string name="action_settings">Settings</string>
-    <string name="hello_world">Hello world!</string>
+    <string name="appDescription">A research app for crowd behaviours developed by CogSci at Queen Mary, University of London.</string>
+    <string name="crowdNodeServiceToggleButtonTextOn">Crowd Node | Active</string>
+    <string name="crowdNodeServiceToggleButtonTextOff">Crowd Node | Inactive</string>
 
 </resources>
