@@ -3,6 +3,7 @@ package uk.ac.qmul.eecs.imccrowdapp;
 import java.io.File;
 
 import android.app.Notification;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.BroadcastReceiver;
@@ -93,7 +94,7 @@ public class CrowdNodeService extends Service {
 		// TASK: Run as foreground service
 		
 		// ie. service won't be culled by Android if low on resources, running it is an overt user intent
-		startForeground(idForForeground, createServiceNotification());
+		startForeground(idForForeground, createServiceNotification("Sensing Active"));
 	}
 
 	@Override
@@ -176,6 +177,14 @@ public class CrowdNodeService extends Service {
 	//	    // Store it
 	//	    serverSettings.setValue("lastSessionID", sessionID);
 	//	    serverSettings.saveFile();
+			
+			// TASK: Update service notification if we have an active session
+			if (intent.getBooleanExtra("sessionActive", false))
+			{
+				Notification notification = createServiceNotification("Sensing Active. Server Connection Active.");
+				NotificationManager notificationManager = (NotificationManager)getSystemService(NOTIFICATION_SERVICE);
+				notificationManager.notify(idForForeground, notification);
+			}
 	    }
 	};
 	
@@ -188,13 +197,13 @@ public class CrowdNodeService extends Service {
 	    }
 	};
 	
-    private Notification createServiceNotification() {
+    private Notification createServiceNotification(String text) {
     	Notification.Builder notificationBuilder = new Notification.Builder(this)
 											    	       .setSmallIcon(R.drawable.ic_launcher)
 											    	       .setContentTitle("IMC Crowd App")
-											    	       .setContentText("Sensing active")
+											    	       .setContentText(text)
     	 												   .setProgress(0, 0, true);
-
+    	
     	// TASK: Set action for notification
     	Intent resultIntent = new Intent(this, MainActivity.class);
     	

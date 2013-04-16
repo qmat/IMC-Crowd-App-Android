@@ -173,6 +173,7 @@ class ServerConnection {
 	   
 	    Intent intent = new Intent("newSessionID");
 		intent.putExtra("sessionID", sessionID);
+		intent.putExtra("sessionActive", sessionActive);
 		LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
 	}
         
