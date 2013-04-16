@@ -10,6 +10,9 @@ import java.util.List;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import android.content.Context;
+import android.content.Intent;
+import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
 import com.loopj.android.http.AsyncHttpClient;
@@ -36,6 +39,8 @@ class ServerConnection {
     private boolean sessionActive;
     private List<FileToUpload> uploadQueue;
     private boolean shouldUpload;
+    
+    private Context context;
     
     private String URLWithPath(String inPath)
     {
@@ -105,7 +110,7 @@ class ServerConnection {
                     String uploadedFilePath = fileInQueue.path;
                     
                     // Remove from upload queue
-                    uploadQueue.remove(uploadedFilePath);
+                    uploadQueue.remove(fileInQueue);
                     
                     // Delete file
                     File file = new File(uploadedFilePath);
@@ -125,19 +130,20 @@ class ServerConnection {
         });
     }
 	
-	public ServerConnection()
+	ServerConnection(Context inContext)
 	{
 	    setEndPointURL("localhost:8888");
 	    
-	    sessionID = "";
-	    sessionActive = false;
+	    setSessionID(null);
 	    
 	    shouldUpload = false;
 	    
 	    uploadQueue = new LinkedList<FileToUpload>();
+	    
+	    context = inContext;
 	}
    
-	public void setEndPointURL(String inURL)
+	void setEndPointURL(String inURL)
 	{
 //		// FIXME: strings made sense in oF, now in java should be using url.normalize etc?
 //		if(inURL.charAt(inURL.length()-1)!=File.separatorChar){
@@ -148,35 +154,37 @@ class ServerConnection {
 		endPointURL = inURL;
 	}
 	
-	public void setSessionID(String inSessionID)
+	void setSessionID(String inSessionID)
 	{
 	    // TASK: Assign new sessionID if tests valid.
-	    
-	    // For now...
-	    if (inSessionID.length() > 0)
+	  
+	    if (inSessionID != null)
 	    {
 	    	Log.v(TAG, "New sessionID: " + inSessionID);
 	        
 	        sessionID = inSessionID;
 	        sessionActive = true;
-	        
-	        //FIXME: ofNotifyEvent(onNewSessionID, inSessionID);
 	    }
 	    else
 	    {
-	    	Log.w(TAG, "new session ID not valid, ignoring");
+	    	sessionID = "No Session";
+	    	sessionActive = false;
 	    }
+	   
+	    Intent intent = new Intent("newSessionID");
+		intent.putExtra("sessionID", sessionID);
+		LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
 	}
         
-	public void startSession()
+	void startSession()
 	{
         Date nowDate = new java.util.Date();
         
         RequestParams params = new RequestParams();
         params.put("sessionID", sessionID);
         params.put("time", nowDate.toString());
-        
-        httpClient.post(URLWithPath("registerID"), params, new AsyncHttpResponseHandler() {
+                
+        httpClient.post(URLWithPath("/registerID"), params, new AsyncHttpResponseHandler() {
             @Override
             public void onSuccess(String responseString) {
                 // For now, response body is plain text assigned sessionID
@@ -190,10 +198,8 @@ class ServerConnection {
             }
         });
 	}
-	
-	//public ofEvent<String> onNewSessionID;
     
-	public void addFileForUpload(String filePath)
+	void addFileForUpload(String filePath)
 	{
 	    File fileObject = new File(filePath);
 	    
@@ -210,7 +216,7 @@ class ServerConnection {
 	    if (shouldUpload) startFileUploads();
 	}
 	
-	public void scanFolderForUpload(String path)
+	void scanFolderForUpload(String path)
 	{
 	    File directory = new File(path);
 	    File[] files = directory.listFiles();
@@ -236,7 +242,7 @@ class ServerConnection {
 	    }
 	}
     
-	public void startFileUploads()
+	void startFileUploads()
 	{
 	    // TASK: Start upload from front of queue. Upload of next happens on successful upload via responseHandler()
 	    
@@ -251,8 +257,11 @@ class ServerConnection {
 	        {
 	            uploadFile(fileToUpload);
 	        }
+	        else
+	        {
+	        	Log.w(TAG, "startFileUploads - uploadQueue has uploadInProgress");
+	        }
 	    }
 	}
-    
 
 }

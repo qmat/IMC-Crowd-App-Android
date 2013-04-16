@@ -1,15 +1,18 @@
 package uk.ac.qmul.eecs.imccrowdapp;
 
-import java.util.Timer;
+import java.io.File;
 
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.PowerManager.WakeLock;
+import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
 public class CrowdNodeService extends Service {
@@ -22,13 +25,14 @@ public class CrowdNodeService extends Service {
 	static boolean hasInstanceEverBeenCreated = false;
 	
 	// TODO: Make dynamic
-	private static final int captureDataPeriodMicroSeconds = 1000;
+	private static final int captureDataPeriodMilliSeconds = 1000;
 	
 	private WakeLock wakeLock;
 	
-	Timer captureDataTimer;
+	private Thread dataLoggerThread;
+	private boolean dataLoggerThreadRun;
 	
-	ServerConnection serverConnection;
+	private ServerConnection serverConnection;
 	
 	@Override
 	public IBinder onBind(Intent intent) {
@@ -50,22 +54,41 @@ public class CrowdNodeService extends Service {
 		wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
 		wakeLock.acquire();
 		
+		// TASK: Register for messages from ServerConnection, DataLogger etc.
+		LocalBroadcastManager localBroadcastManager = LocalBroadcastManager.getInstance(this);
+		localBroadcastManager.registerReceiver(onNewSessionIDReceiver, new IntentFilter("newSessionID"));
+		localBroadcastManager.registerReceiver(onDataLogFileWrittenReceiver, new IntentFilter("dataLogFileWritten"));
+		
 		// TASK: Start logging data
 		
 		// We do this in onCreate rather than onStart, as this is the one thing this service does, and any more calls to start it are redundant. Akin to singleton.	
-		serverConnection = new ServerConnection();
+		serverConnection = new ServerConnection(instance);
 		serverConnection.setEndPointURL(this.getString(R.string.serverEndPoint));
 		serverConnection.startSession();
-		serverConnection.startFileUploads();
 		
-		if (captureDataTimer != null) 
+		dataLoggerThread = new Thread(new Runnable() 
 		{
-			captureDataTimer.cancel();
-			captureDataTimer = null;
-		}
-		
-		captureDataTimer = new Timer();
-		captureDataTimer.schedule(new DataLoggerTask(this), 0, captureDataPeriodMicroSeconds);
+	        DataLogger dataLogger = new DataLogger(instance);
+			
+			public void run() {
+				while(dataLoggerThreadRun)
+				{
+					dataLogger.captureData();
+					try 
+					{
+						Thread.sleep(captureDataPeriodMilliSeconds);
+					} 
+					catch (InterruptedException e) 
+					{
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+				dataLogger.close();
+	        }
+	    });
+		dataLoggerThreadRun = true;
+		dataLoggerThread.start();
 		
 		// TASK: Run as foreground service
 		
@@ -89,13 +112,17 @@ public class CrowdNodeService extends Service {
 		// Stop service's foreground'ness and remove notification
 		stopForeground(true);
 		
+		// TASK: Unregister for messages from ServerConnection, DataLogger etc.
+		LocalBroadcastManager localBroadcastManager = LocalBroadcastManager.getInstance(this);
+		localBroadcastManager.unregisterReceiver(onNewSessionIDReceiver);
+		localBroadcastManager.unregisterReceiver(onDataLogFileWrittenReceiver);
+		
 		// TASK: Stop logging and uploading data
 		
+		dataLoggerThreadRun = false;
+		dataLoggerThread = null;
+		
 		serverConnection = null;
-		
-		captureDataTimer.cancel();
-		captureDataTimer = null;
-		
 	}
 	
 	@Override
@@ -103,6 +130,63 @@ public class CrowdNodeService extends Service {
 		Log.d(TAG, "onStart");
 		
 	}
+	
+	private BroadcastReceiver onNewSessionIDReceiver = new BroadcastReceiver() {
+	    @Override
+	    public void onReceive(Context context, Intent intent)
+	    {
+	    	Log.d(TAG, "onNewSessionIDReceiver");
+			// TASK: Get data directory we can write to
+			
+			File filesDir = getExternalFilesDir("sensorData");
+			if (filesDir == null)
+			{
+				Log.w(TAG, "Could not use external files dir, falling back to internal");
+				filesDir = getFilesDir();
+			}
+			if (filesDir == null)
+			{
+				Log.e(TAG, "Could not use files dir.");
+				// TODO: Alert dialog and quit?
+			}
+			
+			// TASK: Make subdirectory with sessionID
+			
+			File sessionLogDir = new File(filesDir, intent.getStringExtra("sessionID"));
+			
+			boolean sessionLogDirExists = sessionLogDir.canWrite();
+					
+			if (!sessionLogDirExists)
+			{
+				sessionLogDirExists = sessionLogDir.mkdir();
+			}
+	
+			// TASK: Use log folder
+			
+			if (sessionLogDirExists)
+			{
+				Intent newLogDirIntent = new Intent("newLogDir");
+				newLogDirIntent.putExtra("logDir", sessionLogDir.getPath());
+				LocalBroadcastManager.getInstance(instance).sendBroadcast(newLogDirIntent);
+				
+				// WTF. serverConnection is null on destroy and create.
+			    instance.serverConnection.startFileUploads(); // TODO: Do this after initial network activity dies down
+			}
+		    
+	//	    // Store it
+	//	    serverSettings.setValue("lastSessionID", sessionID);
+	//	    serverSettings.saveFile();
+	    }
+	};
+	
+	private BroadcastReceiver onDataLogFileWrittenReceiver = new BroadcastReceiver() {
+	    @Override
+	    public void onReceive(Context context, Intent intent)
+	    {
+	    	Log.d(TAG, "onDataLogFileWrittenReceiver");
+			instance.serverConnection.addFileForUpload(intent.getStringExtra("filePath"));
+	    }
+	};
 	
     private Notification createServiceNotification() {
     	Notification.Builder notificationBuilder = new Notification.Builder(this)

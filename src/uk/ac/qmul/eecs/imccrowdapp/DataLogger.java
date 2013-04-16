@@ -5,24 +5,27 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Date;
 import java.util.EnumMap;
-import java.util.TimerTask;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
 class SensorData
 {
 	static int	SensorDataVersion = 1;
-	public enum SensorDataType {accForceX, accForceY, accForceZ, accPitch, accRoll, locLatitude, locLongitude, locAccuracy, comHeading, comX, comY, comZ };
+	enum SensorDataType {accForceX, accForceY, accForceZ, accPitch, accRoll, locLatitude, locLongitude, locAccuracy, comHeading, comX, comY, comZ };
     
     private Date timeStamp;
     private EnumMap<SensorDataType, Float> sensorDataMap;
     
-    public void add(SensorDataType sensorDataType, float value)
+    void add(SensorDataType sensorDataType, float value)
     {
     	// Timestamp if its the first reading
     	if (sensorDataMap.size() == 0) 
@@ -33,7 +36,7 @@ class SensorData
     	sensorDataMap.put(sensorDataType, value);
     }
 
-    public void clear()
+    void clear()
     {
     	timeStamp = null;
     	sensorDataMap.clear();
@@ -46,16 +49,23 @@ class SensorData
     
     JSONObject toJSON()
     {
-    	JSONObject json = new JSONObject(sensorDataMap);
+    	// This crashes, unfortunately. So, the long way.
+    	// JSONObject json = new JSONObject(sensorDataMap);
+    	JSONObject json = new JSONObject();
     	try 
     	{
-			json.put("timeStamp", String.valueOf(timeStamp.getTime())); 
+	    	json.put("timeStamp", String.valueOf(timeStamp.getTime())); 
+	    	for (SensorDataType key : sensorDataMap.keySet())
+	    	{
+	    		json.put(key.toString(), sensorDataMap.get(key));
+	    	}
 		} 
     	catch (JSONException e) 
     	{
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
+    	
     	return json;
     }
     
@@ -69,9 +79,10 @@ class DataLogger {
 	private SensorData[] sensorDataArray;
 	private int sensorDataArrayIndex;
 	private String logsFolder;
+	private Context context;
 	
-	DataLogger()
-	{
+	DataLogger(Context inContext)
+	{	
 		sensorDataArraySize = 10; // TODO: make newFileInterval settable
 		sensorDataArray = new SensorData[sensorDataArraySize];
 		for (int i = 0; i < sensorDataArraySize; i++)
@@ -81,9 +92,27 @@ class DataLogger {
 		
 		sensorDataArrayIndex = 0;
 		logsFolder = null;
+		
+		context = inContext;
+		
+		LocalBroadcastManager.getInstance(context).registerReceiver(onNewLogDirReceiver, new IntentFilter("newLogDir"));
 	}
 	
-	public void setLogsFolder(String folderPath)
+	void close()
+	{
+		LocalBroadcastManager.getInstance(context).unregisterReceiver(onNewLogDirReceiver);
+	}
+	
+	private BroadcastReceiver onNewLogDirReceiver = new BroadcastReceiver() {
+	    @Override
+	    public void onReceive(Context context, Intent intent)
+	    {
+	    	Log.d(TAG, "onNewLogDirReceiver");
+	    	setLogsFolder(intent.getStringExtra("logDir"));
+	    }
+	};
+	
+	void setLogsFolder(String folderPath)
 	{
 	    // Only set if folder is writeable
 	    File directory = new File(folderPath);
@@ -98,8 +127,10 @@ class DataLogger {
 	    }
 	}
 
-	void captureData()
+    void captureData()
 	{
+		Log.d(TAG, "Run");
+		
 	    // TASK: Capture sensor data
 		sensorDataArray[sensorDataArrayIndex].clear();
 		
@@ -114,6 +145,8 @@ class DataLogger {
         
         if (sensorDataArrayIndex >= sensorDataArraySize)
         {
+        	Log.d(TAG, "Handling full buffer");
+        	
 		    // TASK: Write logged sensor data to file
 		    if (logsFolder != null)
 		    {   
@@ -135,8 +168,12 @@ class DataLogger {
 				
 					// TASK: Notify host app that there is new file for upload etc.
 			        
-					// ofNotifyEvent(onLogFileWritten, filename);
-				} 
+					Log.d(TAG, "Written sensor data");
+					
+					Intent intent = new Intent("dataLogFileWritten");
+					intent.putExtra("filePath", filePath);
+					LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+				}
 	    		catch (IOException e) 
 	    		{
 					// TODO Auto-generated catch block
@@ -147,37 +184,7 @@ class DataLogger {
 		    
 	        // Clear sensorData for new samples
 	        
-		    sensorDataArrayIndex = -1;   
+		    sensorDataArrayIndex = 0;   
 	    }
-	}
-}
-
-class DataLoggerTask extends TimerTask
-{
-	private static final String TAG = "DataLoggerTask";
-	
-	DataLogger dataLogger;
-	
-	DataLoggerTask(Context context)
-	{
-		dataLogger = new DataLogger();
-		
-		File filesDir = context.getExternalFilesDir("sensorData");
-		if (filesDir == null)
-		{
-			Log.w(TAG, "Could not use external files dir, falling back to internal");
-			filesDir = context.getFilesDir();
-		}
-		if (filesDir == null)
-		{
-			Log.e(TAG, "Could not use files dir.");
-			// TODO: Alert dialog and quit?
-		}
-		dataLogger.setLogsFolder(filesDir.getPath());
-	}
-	
-	public void run() 
-	{
-		Log.d("DataLogTask", "Run called");
 	}
 }
