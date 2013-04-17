@@ -10,6 +10,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.PowerManager.WakeLock;
@@ -18,6 +19,7 @@ import android.util.Log;
 
 public class CrowdNodeService extends Service {
 	private static final String TAG = "CrowdNodeService";
+	private static final String TAGSessionID = "SessionID";
 	private static final int idForForeground = 1;
 	
 	// Determine if service is running, available within package
@@ -65,6 +67,15 @@ public class CrowdNodeService extends Service {
 		// We do this in onCreate rather than onStart, as this is the one thing this service does, and any more calls to start it are redundant. Akin to singleton.	
 		serverConnection = new ServerConnection(instance);
 		serverConnection.setEndPointURL(this.getString(R.string.serverEndPoint));
+		
+		// Get sessionID of last use
+		SharedPreferences settings = getSharedPreferences(TAG, MODE_PRIVATE);
+		String sessionID = settings.getString(TAGSessionID, "");
+		if (serverConnection.validateSessionID(sessionID))
+		{
+			serverConnection.setSessionID(sessionID);
+		}
+		
 		serverConnection.startSession();
 		
 		dataLoggerThread = new Thread(new Runnable() 
@@ -174,9 +185,11 @@ public class CrowdNodeService extends Service {
 			    instance.serverConnection.startFileUploads(); // TODO: Do this after initial network activity dies down
 			}
 		    
-	//	    // Store it
-	//	    serverSettings.setValue("lastSessionID", sessionID);
-	//	    serverSettings.saveFile();
+		    // TASK: Store it
+			SharedPreferences settings = getSharedPreferences(TAG, MODE_PRIVATE);  
+			SharedPreferences.Editor prefEditor = settings.edit();  
+			prefEditor.putString(TAGSessionID, intent.getStringExtra("sessionID"));  
+			prefEditor.commit(); 
 			
 			// TASK: Update service notification if we have an active session
 			if (intent.getBooleanExtra("sessionActive", false))

@@ -154,29 +154,54 @@ class ServerConnection {
 		endPointURL = inURL;
 	}
 	
-	void setSessionID(String inSessionID)
+	boolean setSessionID(String inSessionID)
 	{
 	    // TASK: Assign new sessionID if tests valid.
-	  
-	    if (inSessionID != null)
+		
+		String newSessionID;
+		boolean sessionIDChanged;
+		
+	    if (validateSessionID(inSessionID))
 	    {
 	    	Log.v(TAG, "New sessionID: " + inSessionID);
 	        
-	        sessionID = inSessionID;
-	        sessionActive = true;
+	        newSessionID = inSessionID;
 	    }
 	    else
 	    {
-	    	sessionID = "No Session";
-	    	sessionActive = false;
+	    	newSessionID = "No Session";
 	    }
 	   
-	    Intent intent = new Intent("newSessionID");
-		intent.putExtra("sessionID", sessionID);
-		intent.putExtra("sessionActive", sessionActive);
-		LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+	    sessionIDChanged = !newSessionID.equals(sessionID);
+	    
+	    if (sessionIDChanged)
+	    {
+	    	sessionID = newSessionID;
+	    	
+		    Intent intent = new Intent("newSessionID");
+			intent.putExtra("sessionID", sessionID);
+			intent.putExtra("sessionActive", sessionActive);
+			LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+	    }
+	    
+	    return sessionIDChanged;
 	}
-        
+    
+	boolean validateSessionID(String UUID)
+	{
+		// Test as per IMC Crowd Server
+		// https://github.com/qmat/IMC-Crowd-Server/blob/master/requestHandlers.js
+		
+		boolean success = true;
+		success = success && UUID != null;
+		success = success && (UUID.length() == 32);
+		success = success && (UUID.charAt(13) == 'x');
+		
+		Log.d(TAG, "validateSessionID for " + UUID + " tests " + success);
+				
+		return success;
+	}
+	
 	void startSession()
 	{
         Date nowDate = new java.util.Date();
@@ -190,12 +215,16 @@ class ServerConnection {
             public void onSuccess(String responseString) {
                 // For now, response body is plain text assigned sessionID
             	Log.v(TAG, "registerID succeeded with response: " + responseString);
-                setSessionID(responseString);
+                
+            	// Set new session ID, and if it proves to be new, then we'll update sessionActive to true, leaving it as it was if no change.
+            	boolean sessionIDChanged = setSessionID(responseString);
+            	if (sessionIDChanged) sessionActive = true;
             }
         
             @Override
             public void onFailure(Throwable e, String responseString) {
             	Log.w(TAG, "registerID failed with response: " + responseString);
+            	sessionActive = false;
             }
         });
 	}
