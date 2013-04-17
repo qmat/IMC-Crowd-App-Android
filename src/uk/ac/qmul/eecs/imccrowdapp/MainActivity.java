@@ -1,8 +1,12 @@
 package uk.ac.qmul.eecs.imccrowdapp;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Bundle;
+import android.support.v4.content.LocalBroadcastManager;
 import android.view.Menu;
 import android.view.View;
 import android.widget.ToggleButton;
@@ -44,19 +48,42 @@ public class MainActivity extends Activity {
 	public void onStart() {
 		super.onStart();
 		
-		// TASK: Set service button state
-		// FIXME: This is often incorrect on first launch as service is still starting. Need a broadcast to tell the app?
+		// TASK: Set Toggle state
+		
+		// Set state now we're starting
 		crowdNodeServiceToggleButton.setChecked(CrowdNodeService.isInstanceCreated());
+		
+		// Keep in sync from hereon out
+		LocalBroadcastManager localBroadcastManager = LocalBroadcastManager.getInstance(this);
+		localBroadcastManager.registerReceiver(onCrowdNodeServiceStatusChange, new IntentFilter(CrowdNodeService.TAGServiceStatusBroadcast));
 	}
 	
+	@Override
+	public void onStop() {
+		LocalBroadcastManager localBroadcastManager = LocalBroadcastManager.getInstance(this);
+		localBroadcastManager.unregisterReceiver(onCrowdNodeServiceStatusChange);
+		
+		super.onStop();
+	}
+	
+	// Toggle button declared in activity_main.xml has android:onClick="onCrowdNodeServiceToggleClicked"
 	public void onCrowdNodeServiceToggleClicked(View view) {
 	    // Is the toggle on?
 	    boolean on = ((ToggleButton) view).isChecked();
 	    
+	    // TASK: Set service state from button action
 	    if (on) {
 	    	startService(new Intent(this, CrowdNodeService.class));
 	    } else {
 	    	stopService(new Intent(this, CrowdNodeService.class));
 	    }
 	}
+	
+	private BroadcastReceiver onCrowdNodeServiceStatusChange = new BroadcastReceiver() {
+	    @Override
+	    public void onReceive(Context context, Intent intent)
+	    {
+	    	crowdNodeServiceToggleButton.setChecked(intent.getBooleanExtra(CrowdNodeService.TAGServiceStatusExtraActive, false));
+	    }
+    };
 }

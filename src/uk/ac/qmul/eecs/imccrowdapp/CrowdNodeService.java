@@ -19,8 +19,18 @@ import android.util.Log;
 
 public class CrowdNodeService extends Service {
 	private static final String TAG = "CrowdNodeService";
+	
+	// Preference Keys
 	private static final String TAGSessionID = "SessionID";
+	
+	// Notification Tag
 	private static final int idForForeground = 1;
+	
+	// Local Broadcast Notifications
+	static final String TAGServiceStatusBroadcast = "ServiceStatusBroadcast";
+	static final String TAGServiceStatusExtraActive = "ServiceStatusExtraActive";
+	static final String TAGNewLogDirectoryBroadcast = "NewLogDirectoryBroadcast";
+	static final String TAGNewLogDirectoryExtraPath = "NewLogDirectoryExtraPath";
 	
 	// Determine if service is running, available within package
 	private static CrowdNodeService instance = null;
@@ -59,8 +69,8 @@ public class CrowdNodeService extends Service {
 		
 		// TASK: Register for messages from ServerConnection, DataLogger etc.
 		LocalBroadcastManager localBroadcastManager = LocalBroadcastManager.getInstance(this);
-		localBroadcastManager.registerReceiver(onNewSessionIDReceiver, new IntentFilter("newSessionID"));
-		localBroadcastManager.registerReceiver(onDataLogFileWrittenReceiver, new IntentFilter("dataLogFileWritten"));
+		localBroadcastManager.registerReceiver(onNewSessionIDReceiver, new IntentFilter(ServerConnection.TAGNewSessionBroadcast));
+		localBroadcastManager.registerReceiver(onDataLogFileWrittenReceiver, new IntentFilter(DataLogger.TAGLogFileWrittenBroadcast));
 		
 		// TASK: Start logging data
 		
@@ -105,12 +115,24 @@ public class CrowdNodeService extends Service {
 		// TASK: Run as foreground service
 		
 		// ie. service won't be culled by Android if low on resources, running it is an overt user intent
-		startForeground(idForForeground, createServiceNotification("Sensing Active"));
+		startForeground(idForForeground, createServiceNotification(getString(R.string.crowdNodeServiceNotificationText)));
+		
+		// TASK: Notify whoever cares (likely UI)
+		
+		Intent intent = new Intent(TAGServiceStatusBroadcast);
+		intent.putExtra(TAGServiceStatusExtraActive, true);
+		LocalBroadcastManager.getInstance(instance).sendBroadcast(intent);
 	}
 
 	@Override
 	public void onDestroy() {
 		Log.d(TAG, "onDestroy");
+		
+		// TASK: Notify whoever
+		
+		Intent intent = new Intent(TAGServiceStatusBroadcast);
+		intent.putExtra(TAGServiceStatusExtraActive, false);
+		LocalBroadcastManager.getInstance(instance).sendBroadcast(intent);
 		
 		// TASK: Serve our WTF ANDROID is service running query
 		instance = null;
@@ -164,7 +186,7 @@ public class CrowdNodeService extends Service {
 			
 			// TASK: Make subdirectory with sessionID
 			
-			File sessionLogDir = new File(filesDir, intent.getStringExtra("sessionID"));
+			File sessionLogDir = new File(filesDir, intent.getStringExtra(ServerConnection.TAGNewSessionExtraSessionID));
 			
 			boolean sessionLogDirExists = sessionLogDir.canWrite();
 					
@@ -177,8 +199,8 @@ public class CrowdNodeService extends Service {
 			
 			if (sessionLogDirExists)
 			{
-				Intent newLogDirIntent = new Intent("newLogDir");
-				newLogDirIntent.putExtra("logDir", sessionLogDir.getPath());
+				Intent newLogDirIntent = new Intent(TAGNewLogDirectoryBroadcast);
+				newLogDirIntent.putExtra(TAGNewLogDirectoryExtraPath, sessionLogDir.getPath());
 				LocalBroadcastManager.getInstance(instance).sendBroadcast(newLogDirIntent);
 				
 				// WTF. serverConnection is null on destroy and create.
@@ -188,13 +210,13 @@ public class CrowdNodeService extends Service {
 		    // TASK: Store it
 			SharedPreferences settings = getSharedPreferences(TAG, MODE_PRIVATE);  
 			SharedPreferences.Editor prefEditor = settings.edit();  
-			prefEditor.putString(TAGSessionID, intent.getStringExtra("sessionID"));  
+			prefEditor.putString(TAGSessionID, intent.getStringExtra(ServerConnection.TAGNewSessionExtraSessionID));  
 			prefEditor.commit(); 
 			
 			// TASK: Update service notification if we have an active session
-			if (intent.getBooleanExtra("sessionActive", false))
+			if (intent.getBooleanExtra(ServerConnection.TAGNewSessionExtraSessionActive, false))
 			{
-				Notification notification = createServiceNotification("Sensing Active. Server Connection Active.");
+				Notification notification = createServiceNotification(getString(R.string.crowdNodeServiceNotificationText) + " " + getString(R.string.crowdNodeServiceNotificationServerConnectedText));
 				NotificationManager notificationManager = (NotificationManager)getSystemService(NOTIFICATION_SERVICE);
 				notificationManager.notify(idForForeground, notification);
 			}
@@ -206,7 +228,7 @@ public class CrowdNodeService extends Service {
 	    public void onReceive(Context context, Intent intent)
 	    {
 	    	Log.d(TAG, "onDataLogFileWrittenReceiver");
-			instance.serverConnection.addFileForUpload(intent.getStringExtra("filePath"));
+			instance.serverConnection.addFileForUpload(intent.getStringExtra(DataLogger.TAGLogFileWrittenExtraFilePath));
 	    }
 	};
 	

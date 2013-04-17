@@ -33,6 +33,11 @@ class ServerConnection {
     
 	private static final String TAG = "ServerConnection";
 	
+	// Local Broadcast Notifications
+	static final String TAGNewSessionBroadcast = "NewSessionBroadcast";
+	static final String TAGNewSessionExtraSessionID = "NewSessionExtraSessionID";
+	static final String TAGNewSessionExtraSessionActive = "NewSessionExtraSessionActive";
+	
 	private static AsyncHttpClient httpClient = new AsyncHttpClient(); 
     private String endPointURL;
     private String sessionID;
@@ -42,94 +47,6 @@ class ServerConnection {
     
     private Context context;
     
-    private String URLWithPath(String inPath)
-    {
-    	return endPointURL + inPath;
-    }
-    
-    private void uploadFile(FileToUpload fileToUpload)
-    {
-        if (!sessionActive)
-        {
-        	Log.v(TAG, "Session not active, aborting uploadData");
-            return;
-        }
-        
-        Date nowDate = new java.util.Date();
-        
-        RequestParams params = new RequestParams();
-        
-        params.put("uploadSessionID", sessionID);
-        params.put("time", nowDate.toString());
-        params.put("folder", fileToUpload.folderName);
-        
-        File file = new File(fileToUpload.path);
-        try {
-			params.put("file", file);
-		} catch (FileNotFoundException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
-		}
-        
-        fileToUpload.uploadStartCount++;
-        fileToUpload.uploadStartTime = nowDate;
-        fileToUpload.uploadInProgress = true;
-        
-        httpClient.post(URLWithPath("/uploadData"), params, new JsonHttpResponseHandler() {
-            @Override
-            public void onSuccess(JSONObject responseJSON) {
-                // TASK: Confirm upload with queue
-                String logSessionID = "";
-                String fileName = "";
-                boolean success = false;
-				try {
-				    logSessionID = responseJSON.getString("logSessionID");
-	                fileName = responseJSON.getString("fileName");
-	                success = responseJSON.getBoolean("success");
-				} catch (JSONException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-                
-                Log.v(TAG, "Received upload response from sessionID: " + logSessionID + " : " + fileName + " with success " + success);
-                
-                Iterator<FileToUpload> iterator = uploadQueue.iterator();
-                FileToUpload fileInQueue = null;
-                while ( iterator.hasNext() )
-                {
-                	fileInQueue = iterator.next();
-                    if (fileInQueue.fileName.equals(fileName) && fileInQueue.folderName.equals(logSessionID))
-                    {
-                        break;
-                    }
-                    fileInQueue = null;
-                }
-
-                if (fileInQueue != null)
-                {
-                    String uploadedFilePath = fileInQueue.path;
-                    
-                    // Remove from upload queue
-                    uploadQueue.remove(fileInQueue);
-                    
-                    // Delete file
-                    File file = new File(uploadedFilePath);
-                    boolean deleteSuccess = file.delete();
-                    if (!deleteSuccess) Log.w(TAG, "Failed to remove file: " + uploadedFilePath);
-                }
-                else
-                {
-                    Log.w(TAG, "Upload data returned an upload file confirmation not in queue");
-                }
-            }
-        
-            @Override
-            public void onFailure(Throwable e, String response) {
-            	Log.w(TAG, "uploadData failed with response: " + response);
-            }
-        });
-    }
-	
 	ServerConnection(Context inContext)
 	{
 	    setEndPointURL("localhost:8888");
@@ -145,10 +62,11 @@ class ServerConnection {
    
 	void setEndPointURL(String inURL)
 	{
-//		// FIXME: strings made sense in oF, now in java should be using url.normalize etc?
-//		if(inURL.charAt(inURL.length()-1)!=File.separatorChar){
-//			inURL += File.separator;
-//		}
+		// Ensure no trailing slash
+		if(inURL.charAt(inURL.length()-1)=='/')
+		{
+			inURL = inURL.substring(0, inURL.length()-2);
+		}
 		
 		Log.v(TAG, "Setting end point URL to " + inURL);
 		endPointURL = inURL;
@@ -178,9 +96,9 @@ class ServerConnection {
 	    {
 	    	sessionID = newSessionID;
 	    	
-		    Intent intent = new Intent("newSessionID");
-			intent.putExtra("sessionID", sessionID);
-			intent.putExtra("sessionActive", sessionActive);
+		    Intent intent = new Intent(TAGNewSessionBroadcast);
+			intent.putExtra(TAGNewSessionExtraSessionID, sessionID);
+			intent.putExtra(TAGNewSessionExtraSessionActive, sessionActive);
 			LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
 	    }
 	    
@@ -216,9 +134,10 @@ class ServerConnection {
                 // For now, response body is plain text assigned sessionID
             	Log.v(TAG, "registerID succeeded with response: " + responseString);
                 
-            	// Set new session ID, and if it proves to be new, then we'll update sessionActive to true, leaving it as it was if no change.
-            	boolean sessionIDChanged = setSessionID(responseString);
-            	if (sessionIDChanged) sessionActive = true;
+            	// TASK: Set new session ID. 
+            	// We have to set sessionActive first, as the change of sessionID fires the broadcast.
+            	if (validateSessionID(responseString)) sessionActive = true;
+            	setSessionID(responseString);
             }
         
             @Override
@@ -228,6 +147,7 @@ class ServerConnection {
             }
         });
 	}
+    
     
 	void addFileForUpload(String filePath)
 	{
@@ -293,5 +213,104 @@ class ServerConnection {
 	        }
 	    }
 	}
+	
+	private void uploadFile(FileToUpload fileToUpload)
+    {
+        if (!sessionActive)
+        {
+        	Log.v(TAG, "Session not active, aborting uploadData");
+            return;
+        }
+        
+        Date nowDate = new java.util.Date();
+        
+        RequestParams params = new RequestParams();
+        
+        params.put("uploadSessionID", sessionID);
+        params.put("time", nowDate.toString());
+        params.put("folder", fileToUpload.folderName);
+        
+        File file = new File(fileToUpload.path);
+        try {
+			params.put("file", file);
+		} catch (FileNotFoundException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+                
+        fileToUpload.uploadStartCount++;
+        fileToUpload.uploadStartTime = nowDate;
+        fileToUpload.uploadInProgress = true;
+        
+        httpClient.post(URLWithPath("/uploadData"), params, new JsonHttpResponseHandler() {
+            @Override
+            public void onSuccess(JSONObject responseJSON) {
+                // TASK: Confirm upload with queue
+                String logSessionID = "";
+                String fileName = "";
+                boolean success = false;
+				try {
+				    logSessionID = responseJSON.getString("logSessionID");
+	                fileName = responseJSON.getString("fileName");
+	                success = responseJSON.getBoolean("success");
+				} catch (JSONException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+                
+                Log.v(TAG, "Received upload response from sessionID: " + logSessionID + " : " + fileName + " with success " + success);
+                
+                Iterator<FileToUpload> iterator = uploadQueue.iterator();
+                FileToUpload fileInQueue = null;
+                while ( iterator.hasNext() )
+                {
+                	fileInQueue = iterator.next();
+                    if (fileInQueue.fileName.equals(fileName) && fileInQueue.folderName.equals(logSessionID))
+                    {
+                        break;
+                    }
+                    fileInQueue = null;
+                }
 
+                if (fileInQueue != null)
+                {
+                    String uploadedFilePath = fileInQueue.path;
+                    
+                    // Remove from upload queue
+                    uploadQueue.remove(fileInQueue);
+                    
+                    // Delete file
+                    File file = new File(uploadedFilePath);
+                    boolean deleteSuccess = file.delete();
+                    if (!deleteSuccess) Log.w(TAG, "Failed to remove file: " + uploadedFilePath);
+                    
+                    // Go upload next in queue
+                    if (shouldUpload) startFileUploads();
+                }
+                else
+                {
+                    Log.w(TAG, "Upload data returned an upload file confirmation not in queue");
+                }
+            }
+        
+            @Override
+            public void onFailure(Throwable e, String response) {
+            	Log.w(TAG, "uploadData failed with response: " + response);
+            	
+            	// FIXME: Update queue info, ie. uploading false, upload start time null.
+            	// How to do this, as we dont't have reference any more.
+            }
+        });
+    }
+	
+    private String URLWithPath(String inPath)
+    {
+		// Ensure leading slash
+		if(inPath.charAt(0)!='/')
+		{
+			inPath = "/" + inPath;
+		}
+    	
+    	return endPointURL + inPath;
+    }
 }

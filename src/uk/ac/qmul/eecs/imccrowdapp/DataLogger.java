@@ -75,6 +75,12 @@ class SensorData
 class DataLogger {
 
 	private static final String TAG = "DataLogger";
+
+	// Local Broadcast Notifications
+	static final String TAGLogFileWrittenBroadcast = "LogFileWrittenBroadcast";
+	static final String TAGLogFileWrittenExtraFilePath = "LogFileWrittenExtraFilePath";
+	
+	
 	private int sensorDataArraySize;
 	private SensorData[] sensorDataArray;
 	private int sensorDataArrayIndex;
@@ -95,7 +101,7 @@ class DataLogger {
 		
 		context = inContext;
 		
-		LocalBroadcastManager.getInstance(context).registerReceiver(onNewLogDirReceiver, new IntentFilter("newLogDir"));
+		LocalBroadcastManager.getInstance(context).registerReceiver(onNewLogDirReceiver, new IntentFilter(CrowdNodeService.TAGNewLogDirectoryBroadcast));
 	}
 	
 	void close()
@@ -108,7 +114,7 @@ class DataLogger {
 	    public void onReceive(Context context, Intent intent)
 	    {
 	    	Log.d(TAG, "onNewLogDirReceiver");
-	    	setLogsFolder(intent.getStringExtra("logDir"));
+	    	setLogsFolder(intent.getStringExtra(CrowdNodeService.TAGNewLogDirectoryExtraPath));
 	    }
 	};
 	
@@ -159,7 +165,7 @@ class DataLogger {
 		    	String jsonString = json.toString();
 		    	
 		    	Date nowDate = new Date();
-		    	String filePath = logsFolder + File.pathSeparator + String.valueOf(nowDate.getTime()); 
+		    	String filePath = logsFolder + File.separator + String.valueOf(nowDate.getTime()); 
 		    	
 	    		try 
 	    		{
@@ -169,10 +175,10 @@ class DataLogger {
 				
 					// TASK: Notify host app that there is new file for upload etc.
 			        
-					Log.d(TAG, "Written sensor data: " + jsonString);
+					Log.d(TAG, "Written sensor data -- \n file: " + filePath + "\n content: " + jsonString);
 					
-					Intent intent = new Intent("dataLogFileWritten");
-					intent.putExtra("filePath", filePath);
+					Intent intent = new Intent(TAGLogFileWrittenBroadcast);
+					intent.putExtra(TAGLogFileWrittenExtraFilePath, filePath);
 					LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
 				}
 	    		catch (IOException e) 
