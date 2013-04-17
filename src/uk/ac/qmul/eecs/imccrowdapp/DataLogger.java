@@ -165,10 +165,11 @@ class DataLogger {
 	    		{
 					FileWriter sensorDataFileWriter = new FileWriter(filePath);
 					sensorDataFileWriter.write(jsonString);
+					sensorDataFileWriter.flush();			
 				
 					// TASK: Notify host app that there is new file for upload etc.
 			        
-					Log.d(TAG, "Written sensor data");
+					Log.d(TAG, "Written sensor data: " + jsonString);
 					
 					Intent intent = new Intent("dataLogFileWritten");
 					intent.putExtra("filePath", filePath);
