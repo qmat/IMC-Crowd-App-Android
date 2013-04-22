@@ -37,15 +37,10 @@ public class CrowdNodeService extends Service {
 	static boolean isInstanceCreated() { return instance != null; }
 	static boolean hasInstanceEverBeenCreated = false;
 	
-	// TODO: Make dynamic
-	private static final int captureDataPeriodMilliSeconds = 1000;
-	
 	private WakeLock wakeLock;
 	
-	private Thread dataLoggerThread;
-	private boolean dataLoggerThreadRun;
-	
 	private ServerConnection serverConnection;
+	private DataLogger dataLogger;
 	
 	@Override
 	public IBinder onBind(Intent intent) {
@@ -88,29 +83,8 @@ public class CrowdNodeService extends Service {
 		
 		serverConnection.startSession();
 		
-		dataLoggerThread = new Thread(new Runnable() 
-		{
-	        DataLogger dataLogger = new DataLogger(instance);
-			
-			public void run() {
-				while(dataLoggerThreadRun)
-				{
-					dataLogger.captureData();
-					try 
-					{
-						Thread.sleep(captureDataPeriodMilliSeconds);
-					} 
-					catch (InterruptedException e) 
-					{
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-				}
-				dataLogger.close();
-	        }
-	    });
-		dataLoggerThreadRun = true;
-		dataLoggerThread.start();
+        dataLogger = new DataLogger(instance);
+        dataLogger.startLogging();
 		
 		// TASK: Run as foreground service
 		
@@ -153,8 +127,8 @@ public class CrowdNodeService extends Service {
 		
 		// TASK: Stop logging and uploading data
 		
-		dataLoggerThreadRun = false;
-		dataLoggerThread = null;
+		dataLogger.stopLogging();
+		dataLogger = null;
 		
 		serverConnection = null;
 	}
