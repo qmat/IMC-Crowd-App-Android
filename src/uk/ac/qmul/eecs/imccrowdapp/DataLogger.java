@@ -25,7 +25,7 @@ class DataLogger implements SensorEventListener {
 	static final String TAGLogFileWrittenExtraFilePath = "LogFileWrittenExtraFilePath";
 		
 	private int sensorEventArraySize;
-	private SensorEvent[] sensorEventArray;
+	private String[] sensorEventArray;
 	private int sensorEventArrayIndex;
 	private String logsFolder;
 		
@@ -34,8 +34,8 @@ class DataLogger implements SensorEventListener {
 	
 	DataLogger(Context inContext)
 	{	
-		sensorEventArraySize = 1000; // TODO: make newFileInterval settable
-		sensorEventArray = new SensorEvent[sensorEventArraySize];
+		sensorEventArraySize = 10; // TODO: make newFileInterval settable
+		sensorEventArray = new String[sensorEventArraySize];
 		
 		sensorEventArrayIndex = 0;
 		logsFolder = null;
@@ -94,21 +94,17 @@ class DataLogger implements SensorEventListener {
 	}
 
 	@Override
-	public void onSensorChanged(SensorEvent event) {
-		// FIXME: Seeing duplicate lines in log. But this isn't showing duplicate lines coming in. Uh-oh.
-		if (!SensorEventHelper.isNew(event))
-		{
-			Log.d(TAG, "Duplicate SensorEvent");
-			return;
-		}
-		
+	public void onSensorChanged(SensorEvent event) 
+	{
 		if (sensorEventArrayIndex >= sensorEventArraySize)
 		{
 			Log.w(TAG, "sensorDataArrayIndex out of bounds. Resetting");
 			sensorEventArrayIndex = 0;
 		}
 		
-		sensorEventArray[sensorEventArrayIndex] = event;
+		// INFO: Do not store SensorEvents! The system recycles them or somesuch, leading to much developer pain.
+		
+		sensorEventArray[sensorEventArrayIndex] = SensorEventHelper.toLogFileEntry(event);
 		
 		sensorEventArrayIndex++;
         
@@ -128,7 +124,7 @@ class DataLogger implements SensorEventListener {
 	    	String separator = System.getProperty("line.separator");
 	        for (int i = 0; i < sensorEventArrayIndex; i++)
 	        {
-	        	stringBuilder.append(SensorEventHelper.toLogFileEntry(sensorEventArray[i]));
+	        	stringBuilder.append(sensorEventArray[i]);
 	        	stringBuilder.append(separator);
 	        	sensorEventArray[i] = null;
 	        }

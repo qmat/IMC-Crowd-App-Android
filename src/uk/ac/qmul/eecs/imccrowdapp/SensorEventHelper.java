@@ -51,17 +51,4 @@ public class SensorEventHelper {
 		
 		return logFileEntry;
 	}
-	
-	static final boolean isNew(SensorEvent event)
-	{
-		int type = event.sensor.getType();
-		
-		boolean isNew = event.timestamp > lastTimestamp[type];
-		
-		lastTimestamp[type] = event.timestamp;
-		
-		return isNew;
-	}
-	
-	private static long[] lastTimestamp = new long[20]; // This will break. There isn't a max int for type specified. Currently its 13, TYPE_AMBIENT_TEMPERATURE
 }
