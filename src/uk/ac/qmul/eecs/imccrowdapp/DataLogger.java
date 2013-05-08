@@ -14,12 +14,14 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.net.wifi.WifiManager;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Looper;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
-class DataLogger implements SensorEventListener {
+class DataLogger extends BroadcastReceiver implements SensorEventListener {
 	
 	private static final String TAG = "DataLogger";
 
@@ -35,6 +37,8 @@ class DataLogger implements SensorEventListener {
 	private int sensorReadInterval;
 	
 	final private SensorManager sensorManager;
+	final private WifiManager wifiManager;
+	
 	final private Context context;
 	
 	HandlerThread dataLoggerThread = new HandlerThread("dataLoggerThread");
@@ -50,7 +54,8 @@ class DataLogger implements SensorEventListener {
 		context = inContext;
 		
 		sensorManager = (SensorManager)context.getSystemService(context.SENSOR_SERVICE);
-
+		wifiManager = (WifiManager)context.getSystemService(context.WIFI_SERVICE);
+		
 		LocalBroadcastManager.getInstance(context).registerReceiver(onNewLogDirReceiver, new IntentFilter(CrowdNodeService.TAGNewLogDirectoryBroadcast));
 	}
 	
@@ -62,9 +67,11 @@ class DataLogger implements SensorEventListener {
 	@SuppressWarnings("deprecation")
 	void startLogging()
 	{
+		// TASK: Start sensors
+		
 		int hertz = 50;
 		sensorReadInterval = 1000000 / hertz;
-		
+				
 		// Start the thread the SensorEvents are going to be delivered and processed on
 		dataLoggerThread.start();
 		Handler handler = new Handler(dataLoggerThread.getLooper());
@@ -79,11 +86,21 @@ class DataLogger implements SensorEventListener {
 			if (ok) 		Log.d(TAG, "Listening for sensor: " + sensor.getName());
 			else			Log.w(TAG, "Failed to register for sensor: " + sensor.getName());
 		}
+		
+		// TASK: Start WiFi scans
+		
+		// FIXME: Registering on handler thread results in much more infrequent entries. WTF?
+		context.registerReceiver(this, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
+		//context.registerReceiver(this, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION), null, handler);
+		
+		// Note this requires the CHANGE_WIFI_STATE permission as well. <shrugs>
+		wifiManager.startScan();
 	}
 	
 	void stopLogging()
 	{
 		sensorManager.unregisterListener(this);
+		context.unregisterReceiver(this);
 		flushData();
 	}
 	
@@ -149,6 +166,31 @@ class DataLogger implements SensorEventListener {
 	        if (sensorDataArrayIndex >= sensorDataArraySize) flushData();
 		}
 	}
+	
+	// Broadcast Receiver, currently only receiving WifiManager.SCAN_RESULTS_AVAILABLE_ACTION
+    public void onReceive(Context c, Intent intent) 
+    {
+    	synchronized(this)
+		{
+			if (sensorDataArrayIndex >= sensorDataArraySize)
+			{
+				Log.w(TAG, "sensorDataArrayIndex out of bounds. Resetting");
+				sensorDataArrayIndex = 0;
+			}
+			
+			sensorDataArray[sensorDataArrayIndex] = ScanResultHelper.toJSONString(wifiManager.getScanResults());
+			
+			sensorDataArrayIndex++;
+	        
+	        // TASK: Handle full buffer
+	        
+	        if (sensorDataArrayIndex >= sensorDataArraySize) flushData();	        
+		}
+    	
+        // TASK: Set new wifi scan off
+        
+    	wifiManager.startScan();
+    }
 	
 	void flushData()
 	{
