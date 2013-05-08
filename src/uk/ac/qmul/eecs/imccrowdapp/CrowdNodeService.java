@@ -102,6 +102,9 @@ public class CrowdNodeService extends Service {
 	public void onDestroy() {
 		Log.d(TAG, "onDestroy");
 		
+		// TASK: Stop logging
+		dataLogger.stopLogging();
+		
 		// TASK: Notify whoever
 		
 		Intent intent = new Intent(TAGServiceStatusBroadcast);
@@ -124,13 +127,6 @@ public class CrowdNodeService extends Service {
 		LocalBroadcastManager localBroadcastManager = LocalBroadcastManager.getInstance(this);
 		localBroadcastManager.unregisterReceiver(onNewSessionIDReceiver);
 		localBroadcastManager.unregisterReceiver(onDataLogFileWrittenReceiver);
-		
-		// TASK: Stop logging and uploading data
-		
-		dataLogger.stopLogging();
-		dataLogger = null;
-		
-		serverConnection = null;
 	}
 	
 	@Override
@@ -144,7 +140,11 @@ public class CrowdNodeService extends Service {
 	    public void onReceive(Context context, Intent intent)
 	    {
 	    	Log.d(TAG, "onNewSessionIDReceiver");
-			// TASK: Get data directory we can write to
+			
+	    	// Ignore messages received while starting / stopping
+	    	if (instance == null) return;
+	    	
+	    	// TASK: Get data directory we can write to
 			
 			File filesDir = getExternalFilesDir("sensorData");
 			if (filesDir == null)
@@ -202,6 +202,10 @@ public class CrowdNodeService extends Service {
 	    public void onReceive(Context context, Intent intent)
 	    {
 	    	Log.d(TAG, "onDataLogFileWrittenReceiver");
+	    	
+	    	// Ignore messages received while starting / stopping
+	    	if (instance == null) return;
+	    	
 			instance.serverConnection.addFileForUpload(intent.getStringExtra(DataLogger.TAGLogFileWrittenExtraFilePath));
 	    }
 	};
