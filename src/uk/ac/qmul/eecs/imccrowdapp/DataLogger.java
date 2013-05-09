@@ -29,9 +29,9 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 	static final String TAGLogFileWrittenBroadcast = "LogFileWrittenBroadcast";
 	static final String TAGLogFileWrittenExtraFilePath = "LogFileWrittenExtraFilePath";
 		
-	private int sensorDataArraySize;
-	private String[] sensorDataArray;
-	private int sensorDataArrayIndex;
+	private int dataLogSize;
+	private String[] dataLogArray;
+	private int dataLogArrayIndex;
 	private String logsFolder;
 	
 	private int sensorReadInterval;
@@ -41,14 +41,17 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 	
 	final private Context context;
 	
+	// Threads to handle callbacks and write log files out on
+	// Note: sensorLoggerThread on Nexus4/4.2.2 gets saturated by Gyro SensorEvents and so is unsuitable for anything else
+	HandlerThread sensorLoggerThread = new HandlerThread("sensorLoggerThread");
 	HandlerThread dataLoggerThread = new HandlerThread("dataLoggerThread");
 	
 	DataLogger(Context inContext)
 	{	
-		sensorDataArraySize = 1000; // TODO: make newFileInterval settable
-		sensorDataArray = new String[sensorDataArraySize];
+		dataLogSize = 1000; // TODO: make newFileInterval settable
+		dataLogArray = new String[dataLogSize];
 		
-		sensorDataArrayIndex = 0;
+		dataLogArrayIndex = 0;
 		logsFolder = null;
 		
 		context = inContext;
@@ -73,8 +76,8 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 		sensorReadInterval = 1000000 / hertz;
 				
 		// Start the thread the SensorEvents are going to be delivered and processed on
-		dataLoggerThread.start();
-		Handler handler = new Handler(dataLoggerThread.getLooper());
+		sensorLoggerThread.start();
+		Handler sensorHandler = new Handler(sensorLoggerThread.getLooper());
 		
 		for (Sensor sensor : sensorManager.getSensorList(Sensor.TYPE_ALL))
 		{
@@ -82,16 +85,19 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 			if (sensor.getType() == Sensor.TYPE_ORIENTATION) continue;
 			
 			// Start listening
-			boolean ok = 	sensorManager.registerListener(this, sensor, sensorReadInterval, handler);
+			boolean ok = 	sensorManager.registerListener(this, sensor, sensorReadInterval, sensorHandler);
 			if (ok) 		Log.d(TAG, "Listening for sensor: " + sensor.getName());
 			else			Log.w(TAG, "Failed to register for sensor: " + sensor.getName());
 		}
 		
 		// TASK: Start WiFi scans
 		
+		dataLoggerThread.start();
+		Handler dataHandler = new Handler(dataLoggerThread.getLooper());
+		
 		// FIXME: Registering on handler thread results in much more infrequent entries. WTF?
-		context.registerReceiver(this, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
-		//context.registerReceiver(this, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION), null, handler);
+		//context.registerReceiver(this, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
+		context.registerReceiver(this, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION), null, dataHandler);
 		
 		// Note this requires the CHANGE_WIFI_STATE permission as well. <shrugs>
 		wifiManager.startScan();
@@ -149,21 +155,21 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 		
 		synchronized(this)
 		{
-			if (sensorDataArrayIndex >= sensorDataArraySize)
+			if (dataLogArrayIndex >= dataLogSize)
 			{
 				Log.w(TAG, "sensorDataArrayIndex out of bounds. Resetting");
-				sensorDataArrayIndex = 0;
+				dataLogArrayIndex = 0;
 			}
 			
 			// INFO: Do not store SensorEvents! The system recycles them or somesuch, leading to much developer pain.
 			
-			sensorDataArray[sensorDataArrayIndex] = SensorEventHelper.toJSONString(event);
+			dataLogArray[dataLogArrayIndex] = SensorEventHelper.toJSONString(event);
 			
-			sensorDataArrayIndex++;
+			dataLogArrayIndex++;
 	        
 	        // TASK: Handle full buffer
 	        
-	        if (sensorDataArrayIndex >= sensorDataArraySize) flushData();
+	        if (dataLogArrayIndex >= dataLogSize) flushData();
 		}
 	}
 	
@@ -172,19 +178,19 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
     {
     	synchronized(this)
 		{
-			if (sensorDataArrayIndex >= sensorDataArraySize)
+			if (dataLogArrayIndex >= dataLogSize)
 			{
 				Log.w(TAG, "sensorDataArrayIndex out of bounds. Resetting");
-				sensorDataArrayIndex = 0;
+				dataLogArrayIndex = 0;
 			}
 			
-			sensorDataArray[sensorDataArrayIndex] = ScanResultHelper.toJSONString(wifiManager.getScanResults());
+			dataLogArray[dataLogArrayIndex] = ScanResultHelper.toJSONString(wifiManager.getScanResults());
 			
-			sensorDataArrayIndex++;
+			dataLogArrayIndex++;
 	        
 	        // TASK: Handle full buffer
 	        
-	        if (sensorDataArrayIndex >= sensorDataArraySize) flushData();	        
+	        if (dataLogArrayIndex >= dataLogSize) flushData();	        
 		}
     	
         // TASK: Set new wifi scan off
@@ -211,15 +217,15 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 				// Format as per JSON Array of JSON objects
 				sensorDataFileWriter.write("[");
 				sensorDataFileWriter.newLine();
-		        for (int i = 0; i < sensorDataArrayIndex; i++)
+		        for (int i = 0; i < dataLogArrayIndex; i++)
 		        {
 		        	if (i > 0)
 		        	{
 		        		sensorDataFileWriter.write(",");
 		        		sensorDataFileWriter.newLine();
 		        	}
-		        	sensorDataFileWriter.write(sensorDataArray[i]);
-		        	sensorDataArray[i] = null;
+		        	sensorDataFileWriter.write(dataLogArray[i]);
+		        	dataLogArray[i] = null;
 		        }
 		        sensorDataFileWriter.newLine();
 				sensorDataFileWriter.write("]");
@@ -244,6 +250,6 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 	    
         // Clear sensorData for new samples
         
-	    sensorDataArrayIndex = 0;
+	    dataLogArrayIndex = 0;
 	}
 }
