@@ -14,10 +14,13 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.net.wifi.WifiManager;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
-import android.os.Looper;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
@@ -38,13 +41,14 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 	
 	final private SensorManager sensorManager;
 	final private WifiManager wifiManager;
+	final private LocationManager locationManager;
 	
 	final private Context context;
-	
+		
 	// Threads to handle callbacks and write log files out on
 	// Note: sensorLoggerThread on Nexus4/4.2.2 gets saturated by Gyro SensorEvents and so is unsuitable for anything else
 	HandlerThread sensorLoggerThread = new HandlerThread("sensorLoggerThread");
-	HandlerThread dataLoggerThread = new HandlerThread("dataLoggerThread");
+	//HandlerThread dataLoggerThread = new HandlerThread("dataLoggerThread");
 	
 	DataLogger(Context inContext)
 	{	
@@ -58,6 +62,7 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 		
 		sensorManager = (SensorManager)context.getSystemService(context.SENSOR_SERVICE);
 		wifiManager = (WifiManager)context.getSystemService(context.WIFI_SERVICE);
+		locationManager = (LocationManager)context.getSystemService(context.LOCATION_SERVICE);
 		
 		LocalBroadcastManager.getInstance(context).registerReceiver(onNewLogDirReceiver, new IntentFilter(CrowdNodeService.TAGNewLogDirectoryBroadcast));
 	}
@@ -92,21 +97,33 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 		
 		// TASK: Start WiFi scans
 		
-		dataLoggerThread.start();
-		Handler dataHandler = new Handler(dataLoggerThread.getLooper());
+		//dataLoggerThread.start();
+		//Handler dataHandler = new Handler(dataLoggerThread.getLooper());
 		
 		// FIXME: Registering on handler thread results in much more infrequent entries. WTF?
-		//context.registerReceiver(this, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
-		context.registerReceiver(this, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION), null, dataHandler);
+		context.registerReceiver(this, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
+		//context.registerReceiver(this, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION), null, dataHandler);
 		
 		// Note this requires the CHANGE_WIFI_STATE permission as well. <shrugs>
 		wifiManager.startScan();
+		
+		// TASK: Start location
+		
+		// Register the listener with the Location Manager to receive location updates.
+		locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, locationListener); // Cell tower and WiFi base stations
+		locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener); // GPS
+		//locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, locationListener, dataLoggerThread.getLooper()); // Cell tower and WiFi base stations
+		//locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener, dataLoggerThread.getLooper()); // GPS
 	}
 	
 	void stopLogging()
 	{
+		// Stop sensing
 		sensorManager.unregisterListener(this);
 		context.unregisterReceiver(this);
+		locationManager.removeUpdates(locationListener);
+		
+		// Write out current state of dataLog
 		flushData();
 	}
 	
@@ -134,69 +151,24 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 	    }
 	}
 
-	@Override
-	public void onAccuracyChanged(Sensor sensor, int accuracy) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void onSensorChanged(SensorEvent event) 
+	synchronized void addToDataLog(String logEntry)
 	{
-		// SensorEvents rarely come at rate requested. We need to handle this.
-		// AKA the Gyroflood.
-		long elapsed = SensorEventHelper.microSecondsElapsedSinceLastCalledForType(event);
-		
-		if (elapsed < sensorReadInterval)
+		if (dataLogArrayIndex >= dataLogSize)
 		{
-			// Log.d(TAG, "SensorEvent too soon after last: " + event.sensor.getName() + " " + elapsed);
-			return;
+			Log.w(TAG, "sensorDataArrayIndex out of bounds. Resetting");
+			dataLogArrayIndex = 0;
 		}
 		
-		synchronized(this)
-		{
-			if (dataLogArrayIndex >= dataLogSize)
-			{
-				Log.w(TAG, "sensorDataArrayIndex out of bounds. Resetting");
-				dataLogArrayIndex = 0;
-			}
-			
-			// INFO: Do not store SensorEvents! The system recycles them or somesuch, leading to much developer pain.
-			
-			dataLogArray[dataLogArrayIndex] = SensorEventHelper.toJSONString(event);
-			
-			dataLogArrayIndex++;
-	        
-	        // TASK: Handle full buffer
-	        
-	        if (dataLogArrayIndex >= dataLogSize) flushData();
-		}
-	}
-	
-	// Broadcast Receiver, currently only receiving WifiManager.SCAN_RESULTS_AVAILABLE_ACTION
-    public void onReceive(Context c, Intent intent) 
-    {
-    	synchronized(this)
-		{
-			if (dataLogArrayIndex >= dataLogSize)
-			{
-				Log.w(TAG, "sensorDataArrayIndex out of bounds. Resetting");
-				dataLogArrayIndex = 0;
-			}
-			
-			dataLogArray[dataLogArrayIndex] = ScanResultHelper.toJSONString(wifiManager.getScanResults());
-			
-			dataLogArrayIndex++;
-	        
-	        // TASK: Handle full buffer
-	        
-	        if (dataLogArrayIndex >= dataLogSize) flushData();	        
-		}
-    	
-        // TASK: Set new wifi scan off
+		// INFO: Do not store SensorEvents! The system recycles them or somesuch, leading to much developer pain.
+		
+		dataLogArray[dataLogArrayIndex] = logEntry;
+		
+		dataLogArrayIndex++;
         
-    	wifiManager.startScan();
-    }
+        // TASK: Handle full buffer
+        
+        if (dataLogArrayIndex >= dataLogSize) flushData();
+	}
 	
 	void flushData()
 	{
@@ -252,4 +224,55 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
         
 	    dataLogArrayIndex = 0;
 	}
+	
+	//// HANDLE SENSORS
+	
+	@Override
+	public void onAccuracyChanged(Sensor sensor, int accuracy) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void onSensorChanged(SensorEvent event) 
+	{
+		// SensorEvents rarely come at rate requested. We need to handle this.
+		// AKA the Gyroflood.
+		long elapsed = SensorEventHelper.microSecondsElapsedSinceLastCalledForType(event);
+		
+		if (elapsed < sensorReadInterval)
+		{
+			// Log.d(TAG, "SensorEvent too soon after last: " + event.sensor.getName() + " " + elapsed);
+			return;
+		}
+		
+		addToDataLog(SensorEventHelper.toJSONString(event));
+	}
+	
+	//// HANDLE WIFI
+	
+	// Broadcast Receiver, currently only receiving WifiManager.SCAN_RESULTS_AVAILABLE_ACTION
+    public void onReceive(Context c, Intent intent) 
+    {
+    	addToDataLog(ScanResultHelper.toJSONString(wifiManager.getScanResults()));
+    	
+        // TASK: Set new wifi scan off
+        
+    	wifiManager.startScan();
+    }
+	
+    //// HANDLE LOCATION
+    
+    LocationListener locationListener = new LocationListener() {
+        public void onLocationChanged(Location location) {
+          // Called when a new location is found by the network location provider.
+        	addToDataLog(LocationHelper.toJSONString(location));
+        }
+
+        public void onStatusChanged(String provider, int status, Bundle extras) {}
+
+        public void onProviderEnabled(String provider) {}
+
+        public void onProviderDisabled(String provider) {}
+      };
 }
