@@ -120,10 +120,32 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 		//locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener, dataLoggerThread.getLooper()); // GPS
 		
 		//TASK: Start Bluetooth Scanner
-		context.registerReceiver(this, new IntentFilter(BluetoothDevice.ACTION_FOUND));
-	
-		bluetoothAdapter.startDiscovery();
 		
+		// Do we have Bluetooth?
+		BluetoothAdapter mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+		if (mBluetoothAdapter == null) {
+		    // Device does not support Bluetooth
+		} else {
+			// we have bluetooth!
+			
+			// Ask user to turn on bluetooth if not enabled
+			if (!bluetoothAdapter.isEnabled()) {
+			    Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+		//	    startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
+			}
+			
+			// Make device discoverable constantly (0)
+			Intent discoverableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
+					discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 0);
+		//			startActivity(discoverableIntent);
+			
+		// Scan and log devices 
+			
+		context.registerReceiver(this, new IntentFilter(BluetoothDevice.ACTION_FOUND));
+
+		bluetoothAdapter.startDiscovery();
+				
+		} // end else if have bluetooth
 	}
 	
 	void stopLogging()
@@ -277,6 +299,8 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
     	
     	if (action.equals(BluetoothDevice.ACTION_FOUND))
     	{
+    		// Bluetooth RSSI comes in as an optional intent
+    		// bluetoothDevice.EXTRA_RSSI
     		BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
     		
     		addToDataLog(BluetoothDeviceHelper.toJSONString(device));
