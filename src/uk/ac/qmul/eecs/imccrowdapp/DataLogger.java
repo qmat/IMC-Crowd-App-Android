@@ -6,6 +6,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Date;
 
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -42,6 +44,7 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 	final private SensorManager sensorManager;
 	final private WifiManager wifiManager;
 	final private LocationManager locationManager;
+	final private BluetoothAdapter bluetoothAdapter;
 	
 	final private Context context;
 		
@@ -63,6 +66,7 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 		sensorManager = (SensorManager)context.getSystemService(context.SENSOR_SERVICE);
 		wifiManager = (WifiManager)context.getSystemService(context.WIFI_SERVICE);
 		locationManager = (LocationManager)context.getSystemService(context.LOCATION_SERVICE);
+		bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
 		
 		LocalBroadcastManager.getInstance(context).registerReceiver(onNewLogDirReceiver, new IntentFilter(CrowdNodeService.TAGNewLogDirectoryBroadcast));
 	}
@@ -114,6 +118,12 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 		locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener); // GPS
 		//locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, locationListener, dataLoggerThread.getLooper()); // Cell tower and WiFi base stations
 		//locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener, dataLoggerThread.getLooper()); // GPS
+		
+		//TASK: Start Bluetooth Scanner
+		context.registerReceiver(this, new IntentFilter(BluetoothDevice.ACTION_FOUND));
+	
+		bluetoothAdapter.startDiscovery();
+		
 	}
 	
 	void stopLogging()
@@ -249,16 +259,30 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 		addToDataLog(SensorEventHelper.toJSONString(event));
 	}
 	
-	//// HANDLE WIFI
+	//// HANDLE WIFI & BT
 	
 	// Broadcast Receiver, currently only receiving WifiManager.SCAN_RESULTS_AVAILABLE_ACTION
     public void onReceive(Context c, Intent intent) 
     {
-    	addToDataLog(ScanResultHelper.toJSONString(wifiManager.getScanResults()));
+    	String action = intent.getAction();
     	
-        // TASK: Set new wifi scan off
-        
-    	wifiManager.startScan();
+    	if(action.equals("android.net.wifi.SCAN_RESULTS")) 
+    	{
+	    	addToDataLog(ScanResultHelper.toJSONString(wifiManager.getScanResults()));
+	    	
+	        // TASK: Set new wifi scan off
+	        
+	    	wifiManager.startScan();
+	    }
+    	
+    	if (action.equals(BluetoothDevice.ACTION_FOUND))
+    	{
+    		BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+    		
+    		addToDataLog(BluetoothDeviceHelper.toJSONString(device));
+	        
+	    	bluetoothAdapter.startDiscovery();
+    	}
     }
 	
     //// HANDLE LOCATION

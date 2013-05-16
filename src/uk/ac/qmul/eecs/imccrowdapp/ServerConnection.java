@@ -30,7 +30,9 @@ class FileToUpload {
 }
 
 class ServerConnection {
-    
+    // Handles all communication to the server
+	
+	
 	private static final String TAG = "ServerConnection";
 	
 	// Local Broadcast Notifications
