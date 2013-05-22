@@ -119,33 +119,23 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 		//locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, locationListener, dataLoggerThread.getLooper()); // Cell tower and WiFi base stations
 		//locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener, dataLoggerThread.getLooper()); // GPS
 		
-		//TASK: Start Bluetooth Scanner
+		//TASK: Start Bluetooth scans
 		
-		// Do we have Bluetooth?
-		if (bluetoothAdapter == null) {
-		    // Device does not support Bluetooth
-		} else {
-			// we have bluetooth!
+		if (bluetoothAdapter != null) 
+		{
+			// Register for results of startDiscovery
+			context.registerReceiver(this, new IntentFilter(BluetoothDevice.ACTION_FOUND));
 			
-			// Ask user to turn on bluetooth if not enabled
-//			if (!bluetoothAdapter.isEnabled()) 
-//			{
-//			    Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-//			    startActivityForResult(enableBtIntent, 1); // REQUEST_ENABLE_BT
-//			}
+			// Register to find out when discovery ends so we can start it anew
+			context.registerReceiver(this, new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED));
 			
-//			// Make device discoverable constantly (0)
-//			Intent discoverableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
-//			discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 0);
-//			context.startActivity(discoverableIntent);
-			
-		// Scan and log devices 
-			
-		context.registerReceiver(this, new IntentFilter(BluetoothDevice.ACTION_FOUND));
-
-		bluetoothAdapter.startDiscovery();
-				
-		} // end else if have bluetooth
+			// Start a discovery scan.
+			bluetoothAdapter.startDiscovery();	
+		}
+		else
+		{
+			addToDataLog("\"info\":\"bluetooth not found\"");
+		}
 	}
 	
 	void stopLogging()
@@ -288,7 +278,7 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
     {
     	String action = intent.getAction();
     	
-    	if(action.equals("android.net.wifi.SCAN_RESULTS")) 
+    	if (action.equals(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)) 
     	{
 	    	addToDataLog(ScanResultHelper.toJSONString(wifiManager.getScanResults()));
 	    	
@@ -296,16 +286,17 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 	        
 	    	wifiManager.startScan();
 	    }
-    	
-    	if (action.equals(BluetoothDevice.ACTION_FOUND))
+    	else if (action.equals(BluetoothDevice.ACTION_FOUND))
+    	{   		
+    		// This is an alternative helper that takes the intent directly, to also get RSSI in the log.
+    		// FIXME: However, Android exception on completing the method. WTF.
+    		//addToDataLog(BluetoothDeviceActionFoundIntentHelper.toJSONString(intent));
+    		Log.d(TAG, "FIXME: BluetoothDevice.ACTION_FOUND");
+    	}
+    	else if (action.equals(BluetoothAdapter.ACTION_DISCOVERY_FINISHED))
     	{
-    		// Bluetooth RSSI comes in as an optional intent
-    		// bluetoothDevice.EXTRA_RSSI
-    		BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-    		
-    		addToDataLog(BluetoothDeviceHelper.toJSONString(device));
-	        
-	    	bluetoothAdapter.startDiscovery();
+    		// TASK: Set a new bluetooth scan off
+    		bluetoothAdapter.startDiscovery();
     	}
     }
 	
