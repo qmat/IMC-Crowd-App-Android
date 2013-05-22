@@ -18,3 +18,5 @@ gen/
 local.properties
 
 res/values/settingsIMC.xml
+
+.DS_Store
