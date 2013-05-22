@@ -122,22 +122,22 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 		//TASK: Start Bluetooth Scanner
 		
 		// Do we have Bluetooth?
-		BluetoothAdapter mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-		if (mBluetoothAdapter == null) {
+		if (bluetoothAdapter == null) {
 		    // Device does not support Bluetooth
 		} else {
 			// we have bluetooth!
 			
 			// Ask user to turn on bluetooth if not enabled
-			if (!bluetoothAdapter.isEnabled()) {
-			    Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-		//	    startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
-			}
+//			if (!bluetoothAdapter.isEnabled()) 
+//			{
+//			    Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+//			    startActivityForResult(enableBtIntent, 1); // REQUEST_ENABLE_BT
+//			}
 			
-			// Make device discoverable constantly (0)
-			Intent discoverableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
-					discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 0);
-		//			startActivity(discoverableIntent);
+//			// Make device discoverable constantly (0)
+//			Intent discoverableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
+//			discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 0);
+//			context.startActivity(discoverableIntent);
 			
 		// Scan and log devices 
 			
