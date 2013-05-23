@@ -49,10 +49,8 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 	
 	final private Context context;
 		
-	// Threads to handle callbacks and write log files out on
-	// Note: sensorLoggerThread on Nexus4/4.2.2 gets saturated by Gyro SensorEvents and so is unsuitable for anything else
 	HandlerThread sensorLoggerThread = new HandlerThread("sensorLoggerThread");
-	//HandlerThread dataLoggerThread = new HandlerThread("dataLoggerThread");
+	HandlerThread dataLoggerThread = new HandlerThread("dataLoggerThread");
 	
 	DataLogger(Context inContext)
 	{	
@@ -85,9 +83,16 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 		int hertz = 50;
 		sensorReadInterval = 1000000 / hertz;
 				
-		// Start the thread the SensorEvents are going to be delivered and processed on
+		// TASK: Start the threads the sensor messages are going to be delivered and processed on
+		// This includes writing out log files, so shouldn't be main thread
+		
+		// Note: sensorLoggerThread on Nexus4/4.2.2 gets saturated by Gyro SensorEvents and so is unsuitable for anything else...
 		sensorLoggerThread.start();
 		Handler sensorHandler = new Handler(sensorLoggerThread.getLooper());
+
+		// ...hence also dataLoggerThread for everything non-SensorEvent
+		dataLoggerThread.start();
+		Handler dataHandler = new Handler(dataLoggerThread.getLooper());
 		
 		for (Sensor sensor : sensorManager.getSensorList(Sensor.TYPE_ALL))
 		{
@@ -106,12 +111,7 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 		
 		if (wifiManager.isWifiEnabled())
 		{
-			//dataLoggerThread.start();
-			//Handler dataHandler = new Handler(dataLoggerThread.getLooper());
-			
-			// FIXME: Registering on handler thread results in much more infrequent entries. WTF?
-			context.registerReceiver(this, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
-			//context.registerReceiver(this, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION), null, dataHandler);
+			context.registerReceiver(this, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION), null, dataHandler);
 			
 			// Note this requires the CHANGE_WIFI_STATE permission as well. <shrugs>
 			wifiManager.startScan();
@@ -119,10 +119,8 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 			// TASK: Start location
 			
 			// Register the listener with the Location Manager to receive location updates.
-			locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, locationListener); // Cell tower and WiFi base stations
-			locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener); // GPS
-			//locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, locationListener, dataLoggerThread.getLooper()); // Cell tower and WiFi base stations
-			//locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener, dataLoggerThread.getLooper()); // GPS
+			locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, locationListener, dataLoggerThread.getLooper()); // Cell tower and WiFi base stations
+			locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener, dataLoggerThread.getLooper()); // GPS
 			
 			// Log sensor we're listening to
 			addToDataLog("{\"active\":\"Wifi\"}");
@@ -133,10 +131,10 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 		if (bluetoothAdapter != null) 
 		{
 			// Register for results of startDiscovery
-			context.registerReceiver(this, new IntentFilter(BluetoothDevice.ACTION_FOUND));
+			context.registerReceiver(this, new IntentFilter(BluetoothDevice.ACTION_FOUND), null, dataHandler);
 			
 			// Register to find out when discovery ends so we can start it anew
-			context.registerReceiver(this, new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED));
+			context.registerReceiver(this, new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED), null, dataHandler);
 			
 			// Start a discovery scan.
 			bluetoothAdapter.startDiscovery();
