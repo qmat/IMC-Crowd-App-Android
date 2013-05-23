@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Date;
+import java.util.Locale;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -95,29 +96,37 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 			
 			// Start listening
 			boolean ok = 	sensorManager.registerListener(this, sensor, sensorReadInterval, sensorHandler);
-			if (ok) 		Log.d(TAG, "Listening for sensor: " + sensor.getName());
+			
+			// Log sensor name we are listening to
+			if (ok) 		addToDataLog(String.format(Locale.US, "{\"active\":\"%s\"}", sensor.getName()));
 			else			Log.w(TAG, "Failed to register for sensor: " + sensor.getName());
 		}
 		
 		// TASK: Start WiFi scans
 		
-		//dataLoggerThread.start();
-		//Handler dataHandler = new Handler(dataLoggerThread.getLooper());
-		
-		// FIXME: Registering on handler thread results in much more infrequent entries. WTF?
-		context.registerReceiver(this, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
-		//context.registerReceiver(this, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION), null, dataHandler);
-		
-		// Note this requires the CHANGE_WIFI_STATE permission as well. <shrugs>
-		wifiManager.startScan();
-		
-		// TASK: Start location
-		
-		// Register the listener with the Location Manager to receive location updates.
-		locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, locationListener); // Cell tower and WiFi base stations
-		locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener); // GPS
-		//locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, locationListener, dataLoggerThread.getLooper()); // Cell tower and WiFi base stations
-		//locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener, dataLoggerThread.getLooper()); // GPS
+		if (wifiManager.isWifiEnabled())
+		{
+			//dataLoggerThread.start();
+			//Handler dataHandler = new Handler(dataLoggerThread.getLooper());
+			
+			// FIXME: Registering on handler thread results in much more infrequent entries. WTF?
+			context.registerReceiver(this, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
+			//context.registerReceiver(this, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION), null, dataHandler);
+			
+			// Note this requires the CHANGE_WIFI_STATE permission as well. <shrugs>
+			wifiManager.startScan();
+			
+			// TASK: Start location
+			
+			// Register the listener with the Location Manager to receive location updates.
+			locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, locationListener); // Cell tower and WiFi base stations
+			locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener); // GPS
+			//locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, locationListener, dataLoggerThread.getLooper()); // Cell tower and WiFi base stations
+			//locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener, dataLoggerThread.getLooper()); // GPS
+			
+			// Log sensor we're listening to
+			addToDataLog("{\"active\":\"Wifi\"}");
+		}
 		
 		//TASK: Start Bluetooth scans
 		
@@ -130,11 +139,10 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 			context.registerReceiver(this, new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED));
 			
 			// Start a discovery scan.
-			bluetoothAdapter.startDiscovery();	
-		}
-		else
-		{
-			addToDataLog("\"info\":\"bluetooth not found\"");
+			bluetoothAdapter.startDiscovery();
+			
+			// Log sensor we're listening to
+			addToDataLog("{\"active\":\"Bluetooth\"}");
 		}
 	}
 	
@@ -272,8 +280,8 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 	}
 	
 	//// HANDLE WIFI & BT
-	
-	// Broadcast Receiver, currently only receiving WifiManager.SCAN_RESULTS_AVAILABLE_ACTION
+
+	// BroadcastReceiver implementation
     public void onReceive(Context c, Intent intent) 
     {
     	String action = intent.getAction();
@@ -283,15 +291,12 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 	    	addToDataLog(ScanResultHelper.toJSONString(wifiManager.getScanResults()));
 	    	
 	        // TASK: Set new wifi scan off
-	        
 	    	wifiManager.startScan();
 	    }
     	else if (action.equals(BluetoothDevice.ACTION_FOUND))
     	{   		
     		// This is an alternative helper that takes the intent directly, to also get RSSI in the log.
-    		// FIXME: However, Android exception on completing the method. WTF.
-    		//addToDataLog(BluetoothDeviceActionFoundIntentHelper.toJSONString(intent));
-    		Log.d(TAG, "FIXME: BluetoothDevice.ACTION_FOUND");
+    		addToDataLog(BluetoothDeviceActionFoundIntentHelper.toJSONString(intent));
     	}
     	else if (action.equals(BluetoothAdapter.ACTION_DISCOVERY_FINISHED))
     	{

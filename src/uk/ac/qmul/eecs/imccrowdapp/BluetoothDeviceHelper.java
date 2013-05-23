@@ -22,8 +22,8 @@ class BluetoothDeviceActionFoundIntentHelper {
 		BluetoothDevice bluetoothDevice = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
 		
 		if (rssi == Short.MAX_VALUE)
-			return String.format(Locale.US, "{\"t\":%d, \"btd\":[%s,%s]}", System.currentTimeMillis()*1000000, bluetoothDevice.getAddress());
+			return String.format(Locale.US, "{\"t\":%d, \"btd\":[\"%s\"]}", System.currentTimeMillis()*1000000, bluetoothDevice.getAddress());
 		else
-			return String.format(Locale.US, "{\"t\":%d, \"btd\":[%s,%s,%d]}", System.currentTimeMillis()*1000000, bluetoothDevice.getAddress(), rssi);
+			return String.format(Locale.US, "{\"t\":%d, \"btd\":[\"%s\",%d]}", System.currentTimeMillis()*1000000, bluetoothDevice.getAddress(), rssi);
 	}
 }
