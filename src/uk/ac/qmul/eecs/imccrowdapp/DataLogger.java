@@ -106,21 +106,35 @@ class DataLogger extends BroadcastReceiver implements SensorEventListener {
 			if (ok) 		addToDataLog(String.format(Locale.US, "{\"active\":\"%s\"}", sensor.getName()));
 			else			Log.w(TAG, "Failed to register for sensor: " + sensor.getName());
 		}
+
+		// TASK: Start location
 		
+		if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))
+		{
+			// Register the listener with the Location Manager to receive location updates.
+			locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, locationListener, dataLoggerThread.getLooper()); // Cell tower and WiFi base stations
+			
+			// Log sensor we're listening to
+			addToDataLog("{\"active\":\"Location via Network\"}");
+		}
+		
+		if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER))
+		{
+			// Register the listener with the Location Manager to receive location updates.
+			locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener, dataLoggerThread.getLooper()); // GPS
+			
+			// Log sensor we're listening to
+			addToDataLog("{\"active\":\"Location via GPS\"}");
+		}
 		// TASK: Start WiFi scans
 		
 		if (wifiManager.isWifiEnabled())
 		{
+			// Register for results of startScan
 			context.registerReceiver(this, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION), null, dataHandler);
 			
 			// Note this requires the CHANGE_WIFI_STATE permission as well. <shrugs>
 			wifiManager.startScan();
-			
-			// TASK: Start location
-			
-			// Register the listener with the Location Manager to receive location updates.
-			locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, locationListener, dataLoggerThread.getLooper()); // Cell tower and WiFi base stations
-			locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener, dataLoggerThread.getLooper()); // GPS
 			
 			// Log sensor we're listening to
 			addToDataLog("{\"active\":\"Wifi\"}");
