@@ -14,6 +14,7 @@ import android.content.SharedPreferences;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.PowerManager.WakeLock;
+import android.support.v4.app.NotificationCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
@@ -211,7 +212,7 @@ public class CrowdNodeService extends Service {
 	};
 	
     private Notification createServiceNotification(String text) {
-    	Notification.Builder notificationBuilder = new Notification.Builder(this)
+    	NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this)
 											    	       .setSmallIcon(R.drawable.ic_launcher)
 											    	       .setContentTitle("IMC Crowd App")
 											    	       .setContentText(text)
