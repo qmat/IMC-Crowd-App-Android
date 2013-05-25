@@ -32,7 +32,8 @@
         android:layout_alignLeft="@+id/crowdNodeServiceToggleButton"
         android:layout_alignParentBottom="true"
         android:enabled="false"
-        android:text="@string/uploadLogsStartButtonText" />
+        android:text="@string/uploadLogsStartButtonText" 
+        android:onClick="onUploadLogsButtonClicked" />/>
 
     <ProgressBar
         android:id="@+id/uploadLogsProgressBar"

@@ -179,7 +179,7 @@ public class CrowdNodeService extends Service {
 				LocalBroadcastManager.getInstance(instance).sendBroadcast(newLogDirIntent);
 				
 				// WTF. serverConnection is null on destroy and create.
-			    instance.serverConnection.startFileUploads(); // TODO: Do this after initial network activity dies down
+			    instance.serverConnection.startFileUploadsAsync(); // TODO: Do this after initial network activity dies down
 			}
 		    
 		    // TASK: Store it

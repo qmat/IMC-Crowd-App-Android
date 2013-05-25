@@ -1,7 +1,15 @@
 package uk.ac.qmul.eecs.imccrowdapp;
 
+import java.io.DataOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.ProtocolException;
+import java.net.URL;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -130,7 +138,7 @@ class ServerConnection {
         params.put("sessionID", sessionID);
         params.put("time", nowDate.toString());
                 
-        httpClient.post(URLWithPath("/registerID"), params, new AsyncHttpResponseHandler() {
+        httpClient.post(urlStringWithPath("/registerID"), params, new AsyncHttpResponseHandler() {
             @Override
             public void onSuccess(String responseString) {
                 // For now, response body is plain text assigned sessionID
@@ -165,7 +173,7 @@ class ServerConnection {
 	    
 	    uploadQueue.add(newFileToUpload);
 	    
-	    if (shouldUpload) startFileUploads();
+	    if (shouldUpload) startFileUploadsAsync();
 	}
 	
 	void scanFolderForUpload(String path)
@@ -194,7 +202,7 @@ class ServerConnection {
 	    }
 	}
     
-	void startFileUploads()
+	void startFileUploadsAsync()
 	{
 	    // TASK: Start upload from front of queue. Upload of next happens on successful upload via responseHandler()
 	    
@@ -207,7 +215,7 @@ class ServerConnection {
 	        FileToUpload fileToUpload = uploadQueue.get(0);
 	        if (!fileToUpload.uploadInProgress)
 	        {
-	            uploadFile(fileToUpload);
+	            uploadFileAsync(fileToUpload);
 	        }
 	        else
 	        {
@@ -216,7 +224,24 @@ class ServerConnection {
 	    }
 	}
 	
-	private void uploadFile(FileToUpload fileToUpload)
+	void doFileUploadsBlocking()
+	{
+	    while (!uploadQueue.isEmpty())
+	    {
+	        FileToUpload fileToUpload = uploadQueue.get(0);
+	        
+	        if (!fileToUpload.uploadInProgress)
+	        {
+	        	uploadFileBlocking(fileToUpload);
+	        }
+	        else
+	        {
+	        	Log.w(TAG, "startFileUploads - uploadQueue has uploadInProgress");
+	        }
+	    }
+	}
+	
+	private void uploadFileAsync(FileToUpload fileToUpload)
     {
         if (!sessionActive)
         {
@@ -244,7 +269,7 @@ class ServerConnection {
         fileToUpload.uploadStartTime = nowDate;
         fileToUpload.uploadInProgress = true;
         
-        httpClient.post(URLWithPath("/uploadData"), params, new JsonHttpResponseHandler() {
+        httpClient.post(urlStringWithPath("/uploadData"), params, new JsonHttpResponseHandler() {
             @Override
             public void onSuccess(JSONObject responseJSON) {
                 // TASK: Confirm upload with queue
@@ -287,7 +312,7 @@ class ServerConnection {
                     if (!deleteSuccess) Log.w(TAG, "Failed to remove file: " + uploadedFilePath);
                     
                     // Go upload next in queue
-                    if (shouldUpload) startFileUploads();
+                    if (shouldUpload) startFileUploadsAsync();
                 }
                 else
                 {
@@ -305,7 +330,169 @@ class ServerConnection {
         });
     }
 	
-    private String URLWithPath(String inPath)
+	private void uploadFileBlocking(FileToUpload fileToUpload)
+    {
+		Date nowDate = new java.util.Date();
+		
+		final String end = "\r\n";
+		final String twoHyphens = "--";
+		final String boundary = "*****++++++************++++++++++++";
+		
+		URL url = urlWithPath("/uploadData");
+		HttpURLConnection conn = null;
+		try {
+			conn = (HttpURLConnection)url.openConnection();
+		} catch (IOException e2) {
+			// TODO Auto-generated catch block
+			e2.printStackTrace();
+		}
+
+		conn.setDoInput(true);
+		conn.setDoOutput(true);
+		conn.setUseCaches(false);
+		try {
+			conn.setRequestMethod("POST");
+		} catch (ProtocolException e2) {
+			// TODO Auto-generated catch block
+			e2.printStackTrace();
+		}
+
+		conn.setRequestProperty("Connection", "Keep-Alive");
+		conn.setRequestProperty("Charset", "UTF-8");
+		conn.setRequestProperty("Content-Type", "multipart/form-data;boundary="+ boundary);
+		
+		DataOutputStream ds = null;
+		try {
+			ds = new DataOutputStream(conn.getOutputStream());
+			ds.writeBytes(twoHyphens + boundary + end);
+			ds.writeBytes("Content-Disposition: form-data; name=\"uploadSessionID\""+end+end+sessionID+end);
+			ds.writeBytes(twoHyphens + boundary + end);
+			ds.writeBytes("Content-Disposition: form-data; name=\"time\""+end+end+nowDate.toString()+end);
+			ds.writeBytes(twoHyphens + boundary + end);
+			ds.writeBytes("Content-Disposition: form-data; name=\"folder\""+end+end+fileToUpload.folderName+end);
+			ds.writeBytes(twoHyphens + boundary + end);
+			ds.writeBytes("Content-Disposition: form-data; name=\"file\";filename=\"" + fileToUpload.path +"\"" + end);
+			ds.writeBytes(end);
+		} catch (IOException e2) {
+			// TODO Auto-generated catch block
+			e2.printStackTrace();
+		}
+                
+        fileToUpload.uploadStartCount++;
+        fileToUpload.uploadStartTime = nowDate;
+        fileToUpload.uploadInProgress = true;
+        
+        FileInputStream fStream = null;
+		try {
+			fStream = new FileInputStream(fileToUpload.path);
+		} catch (FileNotFoundException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+        int bufferSize = 1024;
+        byte[] buffer = new byte[bufferSize];
+        int length = -1;
+
+        try {
+			while((length = fStream.read(buffer)) != -1) {
+			  ds.write(buffer, 0, length);
+			}
+	        ds.writeBytes(end);
+	        ds.writeBytes(twoHyphens + boundary + twoHyphens + end);
+	        /* close streams */
+	        fStream.close();
+	        ds.flush();
+	        ds.close();
+		} catch (IOException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+
+        
+        try {
+			if(conn.getResponseCode() == HttpURLConnection.HTTP_OK)
+			{
+				StringBuffer b = new StringBuffer();
+				InputStream is = conn.getInputStream();
+				byte[] data = new byte[bufferSize];
+				int leng = -1;
+				while((leng = is.read(data)) != -1) {
+				  b.append(new String(data, 0, leng));
+				}
+				String result = b.toString();
+				
+				Log.d(TAG, "HTTP_OK Result: " + result);
+				
+//            // TASK: Confirm upload with queue
+//            String logSessionID = "";
+//            String fileName = "";
+//            boolean success = false;
+//			try {
+//			    logSessionID = responseJSON.getString("logSessionID");
+//                fileName = responseJSON.getString("fileName");
+//                success = responseJSON.getBoolean("success");
+//			} catch (JSONException e) {
+//				// TODO Auto-generated catch block
+//				e.printStackTrace();
+//			}
+//            
+//            Log.v(TAG, "Received upload response from sessionID: " + logSessionID + " : " + fileName + " with success " + success);
+//            
+//            Iterator<FileToUpload> iterator = uploadQueue.iterator();
+//            FileToUpload fileInQueue = null;
+//            while ( iterator.hasNext() )
+//            {
+//            	fileInQueue = iterator.next();
+//                if (fileInQueue.fileName.equals(fileName) && fileInQueue.folderName.equals(logSessionID))
+//                {
+//                    break;
+//                }
+//                fileInQueue = null;
+//            }
+//
+//            if (fileInQueue != null)
+//            {
+//                String uploadedFilePath = fileInQueue.path;
+//                
+//                // Remove from upload queue
+//                uploadQueue.remove(fileInQueue);
+//                
+//                // Delete file
+//                File file = new File(uploadedFilePath);
+//                boolean deleteSuccess = file.delete();
+//                if (!deleteSuccess) Log.w(TAG, "Failed to remove file: " + uploadedFilePath);
+//                
+//                // Go upload next in queue
+//                if (shouldUpload) startFileUploads();
+//            }
+//            else
+//            {
+//                Log.w(TAG, "Upload data returned an upload file confirmation not in queue");
+//            }
+
+			}
+			else
+			{
+				String failureResponse = null;
+				try {
+					failureResponse = conn.getResponseMessage();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				
+				Log.w(TAG, "uploadData failed with response: " + failureResponse);
+				
+				// FIXME: Update queue info, ie. uploading false, upload start time null.
+				// How to do this, as we dont't have reference any more.
+			}
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+    }
+	
+    private String urlStringWithPath(String inPath)
     {
 		// Ensure leading slash
 		if(inPath.charAt(0)!='/')
@@ -314,5 +501,19 @@ class ServerConnection {
 		}
     	
     	return endPointURL + inPath;
+    }
+    
+    private URL urlWithPath(String inPath)
+    {
+    	URL returnURL = null;
+    	
+		try {
+			returnURL = new URL(urlStringWithPath(inPath));
+		} catch (MalformedURLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+		return returnURL;
     }
 }

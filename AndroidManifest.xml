@@ -41,6 +41,10 @@
             android:name=".CrowdNodeService" 
             android:exported="false">
         </service>
+        <service 
+            android:name=".UploadFileService" 
+            android:exported="false">
+        </service>
     </application>
 
 </manifest>

@@ -15,6 +15,7 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.ToggleButton;
 
@@ -65,8 +66,9 @@ public class MainActivity extends Activity {
 		localBroadcastManager.registerReceiver(onCrowdNodeServiceStatusChange, new IntentFilter(CrowdNodeService.TAGServiceStatusBroadcast));
 		localBroadcastManager.registerReceiver(onDataLogFileWritten, new IntentFilter(DataLogger.TAGLogFileWrittenBroadcast));
 		
-		// Update log file text
+		// TASK: Set upload state
 		scanLogFolders();
+		localBroadcastManager.registerReceiver(onUploadFileServiceBroadcast, new IntentFilter(UploadFileService.TAGUploadFileServiceBroadcast));
 	}
 	
 	@Override
@@ -100,6 +102,39 @@ public class MainActivity extends Activity {
 	    }
 	}
 	
+	public void onUploadLogsButtonClicked(View view) {
+	    
+	    // TASK: Find data directory as per CrowdNodeService.
+	    
+		File filesDir = getExternalFilesDir("sensorData");
+		if (filesDir == null)
+		{
+			Log.w(TAG, "Could not use external files dir, falling back to internal");
+			filesDir = getFilesDir();
+		}
+		if (filesDir == null)
+		{
+			Log.e(TAG, "Could not use files dir.");
+			// TODO: Alert dialog and quit?
+		}
+		
+		// TASK: Get subfolders, which should correspond to CrowdNodeService sessions
+		String[] sessionFolderNames = filesDir.list();
+		
+		for (String sessionFolderName : sessionFolderNames)
+		{
+			String folderPath = filesDir.getPath() + File.separator + sessionFolderName;
+			Log.d(TAG, "sessionPath " + folderPath);
+			
+			Intent folderToUploadIntent = new Intent(this, UploadFileService.class);
+			folderToUploadIntent.putExtra("folder", folderPath);
+			
+			startService(folderToUploadIntent);
+		}
+		
+	}
+	
+	
 	private BroadcastReceiver onCrowdNodeServiceStatusChange = new BroadcastReceiver() {
 	    @Override
 	    public void onReceive(Context context, Intent intent)
@@ -124,9 +159,21 @@ public class MainActivity extends Activity {
 	    }
     };
     
+	private BroadcastReceiver onUploadFileServiceBroadcast = new BroadcastReceiver() {
+	    @Override
+	    public void onReceive(Context context, Intent intent)
+	    {
+	    		ProgressBar uploadLogsProgressBar = (ProgressBar) findViewById(R.id.uploadLogsProgressBar);
+	    		
+	    		int visibility = intent.getBooleanExtra(UploadFileService.TAGUploadFileServiceHandlingExtra, false) ? View.VISIBLE : View.INVISIBLE;
+	    		
+	    		uploadLogsProgressBar.setVisibility(visibility);
+	    }
+    };
+    
     private int scanLogFolders()
     {
-    	// TASK: Find data directory as per CrowdNodeService.
+    	
 		
 		File filesDir = getExternalFilesDir("sensorData");
 		if (filesDir == null)
