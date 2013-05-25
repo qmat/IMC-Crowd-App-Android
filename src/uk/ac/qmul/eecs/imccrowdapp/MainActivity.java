@@ -1,5 +1,9 @@
 package uk.ac.qmul.eecs.imccrowdapp;
 
+import java.io.File;
+import java.util.Calendar;
+import java.util.Locale;
+
 import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -7,8 +11,11 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Bundle;
 import android.support.v4.content.LocalBroadcastManager;
+import android.util.Log;
 import android.view.Menu;
 import android.view.View;
+import android.widget.Button;
+import android.widget.TextView;
 import android.widget.ToggleButton;
 
 public class MainActivity extends Activity {
@@ -56,6 +63,10 @@ public class MainActivity extends Activity {
 		// Keep in sync from hereon out
 		LocalBroadcastManager localBroadcastManager = LocalBroadcastManager.getInstance(this);
 		localBroadcastManager.registerReceiver(onCrowdNodeServiceStatusChange, new IntentFilter(CrowdNodeService.TAGServiceStatusBroadcast));
+		localBroadcastManager.registerReceiver(onDataLogFileWritten, new IntentFilter(DataLogger.TAGLogFileWrittenBroadcast));
+		
+		// Update log file text
+		scanLogFolders();
 	}
 	
 	@Override
@@ -71,11 +82,21 @@ public class MainActivity extends Activity {
 	    // Is the toggle on?
 	    boolean on = ((ToggleButton) view).isChecked();
 	    
+	    Button uploadLogsButton = (Button) findViewById(R.id.uploadLogsButton);
+	    
 	    // TASK: Set service state from button action
 	    if (on) {
 	    	startService(new Intent(this, CrowdNodeService.class));
+	    	
+	    	uploadLogsButton.setEnabled(false);
 	    } else {
 	    	stopService(new Intent(this, CrowdNodeService.class));
+	    	
+	    	// See if there are still uploaded logs
+	    	if (scanLogFolders() > 0)
+	    	{
+	    		uploadLogsButton.setEnabled(true);
+	    	}
 	    }
 	}
 	
@@ -86,4 +107,55 @@ public class MainActivity extends Activity {
 	    	crowdNodeServiceToggleButton.setChecked(intent.getBooleanExtra(CrowdNodeService.TAGServiceStatusExtraActive, false));
 	    }
     };
+    
+	private BroadcastReceiver onDataLogFileWritten = new BroadcastReceiver() {
+	    @Override
+	    public void onReceive(Context context, Intent intent)
+	    {
+	    	// Update log file upload section if CNS is toggled on (file can still be writing in background when button turned off)
+	    	ToggleButton crowdNodeServiceToggleButton = (ToggleButton) findViewById(R.id.crowdNodeServiceToggleButton);
+	    	if (crowdNodeServiceToggleButton.isChecked())
+	    	{
+		    	Calendar now = Calendar.getInstance();
+		    	TextView infoText = (TextView) findViewById(R.id.uploadLogsInfoTextView);
+	
+		    	infoText.setText(String.format(Locale.US, "Log written at %02d:%02d:%02d", now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), now.get(Calendar.SECOND)));
+	    	}
+	    }
+    };
+    
+    private int scanLogFolders()
+    {
+    	// TASK: Find data directory as per CrowdNodeService.
+		
+		File filesDir = getExternalFilesDir("sensorData");
+		if (filesDir == null)
+		{
+			Log.w(TAG, "Could not use external files dir, falling back to internal");
+			filesDir = getFilesDir();
+		}
+		if (filesDir == null)
+		{
+			Log.e(TAG, "Could not use files dir.");
+			// TODO: Alert dialog and quit?
+		}
+		
+		// TASK: Get subfolders, which should correspond to CrowdNodeService sessions
+		File[] sessionFolders = filesDir.listFiles();
+		
+		int sessionFolderCount = sessionFolders.length;
+		int sessionFileTotal = 0;
+		
+		for (File file : sessionFolders)
+		{
+			sessionFileTotal += file.list().length;
+		}
+		
+		TextView infoText = (TextView) findViewById(R.id.uploadLogsInfoTextView);
+		infoText.setText(sessionFileTotal + " logs in " + sessionFolderCount + " sessions");
+		
+		Log.d(TAG, "sessionFolderCount: " + sessionFolderCount + " sessionFileTotal: " + sessionFileTotal);
+		
+		return sessionFileTotal;
+    }
 }

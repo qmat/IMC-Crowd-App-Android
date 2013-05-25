@@ -25,4 +25,32 @@
         android:textOff="@string/crowdNodeServiceToggleButtonTextOff"
         android:onClick="onCrowdNodeServiceToggleClicked" />
 
+    <Button
+        android:id="@+id/uploadLogsButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignLeft="@+id/crowdNodeServiceToggleButton"
+        android:layout_alignParentBottom="true"
+        android:enabled="false"
+        android:text="@string/uploadLogsStartButtonText" />
+
+    <ProgressBar
+        android:id="@+id/uploadLogsProgressBar"
+        style="?android:attr/progressBarStyleLarge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignRight="@+id/crowdNodeServiceToggleButton"
+        android:layout_alignTop="@+id/uploadLogsButton"
+        android:visibility="invisible" />
+
+    <TextView
+        android:id="@+id/uploadLogsInfoTextView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignBaseline="@+id/uploadLogsButton"
+        android:layout_alignBottom="@+id/uploadLogsButton"
+        android:layout_toLeftOf="@+id/uploadLogsProgressBar"
+        android:layout_toRightOf="@+id/uploadLogsButton"
+        android:text="@string/uploadLogsInfoText" />
+
 </RelativeLayout>

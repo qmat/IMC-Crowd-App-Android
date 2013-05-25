@@ -8,5 +8,7 @@
     <string name="crowdNodeServiceToggleButtonTextOff">Crowd Node</string>
     <string name="crowdNodeServiceNotificationServerConnectedText">Server Active. </string>
     <string name="crowdNodeServiceNotificationText">Sensing Active. </string>
+    <string name="uploadLogsStartButtonText">Upload</string>
+    <string name="uploadLogsInfoText">Logs not searched</string>
 
 </resources>
