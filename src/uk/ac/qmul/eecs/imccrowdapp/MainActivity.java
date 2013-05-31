@@ -9,6 +9,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
@@ -22,6 +23,7 @@ import android.widget.ToggleButton;
 public class MainActivity extends Activity {
 
 	private final static String TAG = "IMCCrowdApp";
+	private final static String TAGCrowdNodeServiceActive = "CrowdNodeServiceActive";
 	// Note on logging. Android sucks. Most accurate and concise: http://ogre.ikratko.com/archives/993
 	// To debug, you need to set the level on your development machine using "adb shell setprop log.tag.<YOUR_LOG_TAG> <LEVEL>" for all tags you want
 	// ie. in the terminal
@@ -29,6 +31,9 @@ public class MainActivity extends Activity {
 	// To release, these Log calls will need to be qualified with "if (BuildConfig.DEBUG) Log..."
 	
 	ToggleButton crowdNodeServiceToggleButton;
+	Button uploadLogsButton;
+	ProgressBar uploadLogsProgressBar;
+	TextView logsInfoTextView;
 	
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -36,10 +41,13 @@ public class MainActivity extends Activity {
 		setContentView(R.layout.activity_main);
 		
 		crowdNodeServiceToggleButton = (ToggleButton) findViewById(R.id.crowdNodeServiceToggleButton);
+		uploadLogsButton = (Button) findViewById(R.id.uploadLogsButton);
+		uploadLogsProgressBar = (ProgressBar) findViewById(R.id.uploadLogsProgressBar);
+		logsInfoTextView = (TextView) findViewById(R.id.uploadLogsInfoTextView);
 		
-		// TASK: Start our node of the (assumed) crowd (the user is among)
-		// Only doing this on first launch, afterwards toggle should set state.
-		if (!CrowdNodeService.hasInstanceEverBeenCreated) 
+		SharedPreferences settings = getSharedPreferences(TAG, MODE_PRIVATE);
+		boolean crowdNodeServiceWasActive = settings.getBoolean(TAGCrowdNodeServiceActive, true);
+		if (crowdNodeServiceWasActive) 
 		{
 			startService(new Intent(this, CrowdNodeService.class));
 		}
@@ -60,6 +68,7 @@ public class MainActivity extends Activity {
 		
 		// Set state now we're starting
 		crowdNodeServiceToggleButton.setChecked(CrowdNodeService.isInstanceCreated());
+		uploadLogsButton.setEnabled(!CrowdNodeService.isInstanceCreated());
 		
 		// Keep in sync from hereon out
 		LocalBroadcastManager localBroadcastManager = LocalBroadcastManager.getInstance(this);
@@ -69,6 +78,7 @@ public class MainActivity extends Activity {
 		// TASK: Set upload state
 		scanLogFolders();
 		localBroadcastManager.registerReceiver(onUploadFileServiceBroadcast, new IntentFilter(UploadFileService.TAGUploadFileServiceBroadcast));
+		localBroadcastManager.registerReceiver(onFileUploadedBroadcast, new IntentFilter(ServerConnection.TAGFileUploadedBroadcast));
 	}
 	
 	@Override
@@ -84,8 +94,6 @@ public class MainActivity extends Activity {
 	    // Is the toggle on?
 	    boolean on = ((ToggleButton) view).isChecked();
 	    
-	    Button uploadLogsButton = (Button) findViewById(R.id.uploadLogsButton);
-	    
 	    // TASK: Set service state from button action
 	    if (on) {
 	    	startService(new Intent(this, CrowdNodeService.class));
@@ -100,40 +108,18 @@ public class MainActivity extends Activity {
 	    		uploadLogsButton.setEnabled(true);
 	    	}
 	    }
+		
+		SharedPreferences settings = getSharedPreferences(TAG, MODE_PRIVATE);  
+		SharedPreferences.Editor prefEditor = settings.edit();  
+		prefEditor.putBoolean(TAGCrowdNodeServiceActive, on);  
+		prefEditor.commit();
 	}
 	
 	public void onUploadLogsButtonClicked(View view) {
-	    
-	    // TASK: Find data directory as per CrowdNodeService.
-	    
-		File filesDir = getExternalFilesDir("sensorData");
-		if (filesDir == null)
-		{
-			Log.w(TAG, "Could not use external files dir, falling back to internal");
-			filesDir = getFilesDir();
-		}
-		if (filesDir == null)
-		{
-			Log.e(TAG, "Could not use files dir.");
-			// TODO: Alert dialog and quit?
-		}
 		
-		// TASK: Get subfolders, which should correspond to CrowdNodeService sessions
-		String[] sessionFolderNames = filesDir.list();
-		
-		for (String sessionFolderName : sessionFolderNames)
-		{
-			String folderPath = filesDir.getPath() + File.separator + sessionFolderName;
-			Log.d(TAG, "sessionPath " + folderPath);
-			
-			Intent folderToUploadIntent = new Intent(this, UploadFileService.class);
-			folderToUploadIntent.putExtra("folder", folderPath);
-			
-			startService(folderToUploadIntent);
-		}
-		
+		Intent uploadFileServiceIntent = new Intent(this, UploadFileService.class);
+		startService(uploadFileServiceIntent);
 	}
-	
 	
 	private BroadcastReceiver onCrowdNodeServiceStatusChange = new BroadcastReceiver() {
 	    @Override
@@ -148,13 +134,12 @@ public class MainActivity extends Activity {
 	    public void onReceive(Context context, Intent intent)
 	    {
 	    	// Update log file upload section if CNS is toggled on (file can still be writing in background when button turned off)
-	    	ToggleButton crowdNodeServiceToggleButton = (ToggleButton) findViewById(R.id.crowdNodeServiceToggleButton);
+
 	    	if (crowdNodeServiceToggleButton.isChecked())
 	    	{
 		    	Calendar now = Calendar.getInstance();
-		    	TextView infoText = (TextView) findViewById(R.id.uploadLogsInfoTextView);
 	
-		    	infoText.setText(String.format(Locale.US, "Log written at %02d:%02d:%02d", now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), now.get(Calendar.SECOND)));
+		    	logsInfoTextView.setText(String.format(Locale.US, "Log written at %02d:%02d:%02d", now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), now.get(Calendar.SECOND)));
 	    	}
 	    }
     };
@@ -163,11 +148,19 @@ public class MainActivity extends Activity {
 	    @Override
 	    public void onReceive(Context context, Intent intent)
 	    {
-	    		ProgressBar uploadLogsProgressBar = (ProgressBar) findViewById(R.id.uploadLogsProgressBar);
-	    		
-	    		int visibility = intent.getBooleanExtra(UploadFileService.TAGUploadFileServiceHandlingExtra, false) ? View.VISIBLE : View.INVISIBLE;
-	    		
-	    		uploadLogsProgressBar.setVisibility(visibility);
+    		boolean handling = intent.getBooleanExtra(UploadFileService.TAGUploadFileServiceHandlingExtra, false) ;
+    		
+    		uploadLogsProgressBar.setVisibility(handling ? View.VISIBLE : View.INVISIBLE);
+    		    		
+    		if (!handling) scanLogFolders();
+	    }
+    };
+    
+	private BroadcastReceiver onFileUploadedBroadcast = new BroadcastReceiver() {
+	    @Override
+	    public void onReceive(Context context, Intent intent)
+	    {
+	    	logsInfoTextView.setText("Uploading. " + intent.getIntExtra(ServerConnection.TAGFileUploadedExtraQueueSize, -1) + " remaining in this session");
 	    }
     };
     
@@ -198,8 +191,7 @@ public class MainActivity extends Activity {
 			sessionFileTotal += file.list().length;
 		}
 		
-		TextView infoText = (TextView) findViewById(R.id.uploadLogsInfoTextView);
-		infoText.setText(sessionFileTotal + " logs in " + sessionFolderCount + " sessions");
+		logsInfoTextView.setText(sessionFileTotal + " logs in " + sessionFolderCount + " sessions");
 		
 		Log.d(TAG, "sessionFolderCount: " + sessionFolderCount + " sessionFileTotal: " + sessionFileTotal);
 		

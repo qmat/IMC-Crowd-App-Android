@@ -1,14 +1,8 @@
 package uk.ac.qmul.eecs.imccrowdapp;
 
-import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
-import java.net.ProtocolException;
 import java.net.URL;
 import java.util.Date;
 import java.util.Iterator;
@@ -17,6 +11,7 @@ import java.util.List;
 
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.json.JSONTokener;
 
 import android.content.Context;
 import android.content.Intent;
@@ -27,6 +22,7 @@ import com.loopj.android.http.AsyncHttpClient;
 import com.loopj.android.http.AsyncHttpResponseHandler;
 import com.loopj.android.http.JsonHttpResponseHandler;
 import com.loopj.android.http.RequestParams;
+import com.loopj.android.http.SyncHttpClient;
 
 class FileToUpload {
     String          path;
@@ -47,6 +43,9 @@ class ServerConnection {
 	static final String TAGNewSessionBroadcast = "NewSessionBroadcast";
 	static final String TAGNewSessionExtraSessionID = "NewSessionExtraSessionID";
 	static final String TAGNewSessionExtraSessionActive = "NewSessionExtraSessionActive";
+	static final String TAGFileUploadedBroadcast = "FileUploadedBroadcast";
+	static final String TAGFileUploadedExtraPath = "FileUploadedExtraPath";
+	static final String TAGFileUploadedExtraQueueSize = "FileUploadedExtraQueueSize";
 	
 	private static AsyncHttpClient httpClient = new AsyncHttpClient(); 
     private String endPointURL;
@@ -230,6 +229,8 @@ class ServerConnection {
 	    {
 	        FileToUpload fileToUpload = uploadQueue.get(0);
 	        
+	        if (fileToUpload.uploadStartCount > 3) return;
+	        
 	        if (!fileToUpload.uploadInProgress)
 	        {
 	        	uploadFileBlocking(fileToUpload);
@@ -332,161 +333,80 @@ class ServerConnection {
 	
 	private void uploadFileBlocking(FileToUpload fileToUpload)
     {
-		Date nowDate = new java.util.Date();
-		
-		final String end = "\r\n";
-		final String twoHyphens = "--";
-		final String boundary = "*****++++++************++++++++++++";
-		
-		URL url = urlWithPath("/uploadData");
-		HttpURLConnection conn = null;
-		try {
-			conn = (HttpURLConnection)url.openConnection();
-		} catch (IOException e2) {
-			// TODO Auto-generated catch block
-			e2.printStackTrace();
-		}
+		SyncHttpClient syncHttpClient = new SyncHttpClient() {
 
-		conn.setDoInput(true);
-		conn.setDoOutput(true);
-		conn.setUseCaches(false);
-		try {
-			conn.setRequestMethod("POST");
-		} catch (ProtocolException e2) {
-			// TODO Auto-generated catch block
-			e2.printStackTrace();
-		}
-
-		conn.setRequestProperty("Connection", "Keep-Alive");
-		conn.setRequestProperty("Charset", "UTF-8");
-		conn.setRequestProperty("Content-Type", "multipart/form-data;boundary="+ boundary);
+			@Override
+			public String onRequestFailed(Throwable arg0, String arg1) {
+				Log.w(TAG, "onRequestFailed: " + arg0.toString() + arg1);
+				return null;
+			}};
 		
-		DataOutputStream ds = null;
-		try {
-			ds = new DataOutputStream(conn.getOutputStream());
-			ds.writeBytes(twoHyphens + boundary + end);
-			ds.writeBytes("Content-Disposition: form-data; name=\"uploadSessionID\""+end+end+sessionID+end);
-			ds.writeBytes(twoHyphens + boundary + end);
-			ds.writeBytes("Content-Disposition: form-data; name=\"time\""+end+end+nowDate.toString()+end);
-			ds.writeBytes(twoHyphens + boundary + end);
-			ds.writeBytes("Content-Disposition: form-data; name=\"folder\""+end+end+fileToUpload.folderName+end);
-			ds.writeBytes(twoHyphens + boundary + end);
-			ds.writeBytes("Content-Disposition: form-data; name=\"file\";filename=\"" + fileToUpload.path +"\"" + end);
-			ds.writeBytes(end);
-		} catch (IOException e2) {
+		
+        Date nowDate = new java.util.Date();
+        
+        RequestParams params = new RequestParams();
+        
+        params.put("uploadSessionID", sessionID);
+        params.put("time", nowDate.toString());
+        params.put("folder", fileToUpload.folderName);
+        
+        File file = new File(fileToUpload.path);
+        try {
+			params.put("file", file);
+		} catch (FileNotFoundException e1) {
 			// TODO Auto-generated catch block
-			e2.printStackTrace();
+			e1.printStackTrace();
 		}
                 
         fileToUpload.uploadStartCount++;
         fileToUpload.uploadStartTime = nowDate;
         fileToUpload.uploadInProgress = true;
         
-        FileInputStream fStream = null;
-		try {
-			fStream = new FileInputStream(fileToUpload.path);
-		} catch (FileNotFoundException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
-		}
-        int bufferSize = 1024;
-        byte[] buffer = new byte[bufferSize];
-        int length = -1;
-
-        try {
-			while((length = fStream.read(buffer)) != -1) {
-			  ds.write(buffer, 0, length);
-			}
-	        ds.writeBytes(end);
-	        ds.writeBytes(twoHyphens + boundary + twoHyphens + end);
-	        /* close streams */
-	        fStream.close();
-	        ds.flush();
-	        ds.close();
-		} catch (IOException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
-		}
-
+        String result = syncHttpClient.post(urlStringWithPath("/uploadData"), params);
+		
+        if (result == null)
+        {
+        	Log.w(TAG, "Blocking upload had no return");
+        	fileToUpload.uploadInProgress = false;
+        	return;
+        }
         
-        try {
-			if(conn.getResponseCode() == HttpURLConnection.HTTP_OK)
-			{
-				StringBuffer b = new StringBuffer();
-				InputStream is = conn.getInputStream();
-				byte[] data = new byte[bufferSize];
-				int leng = -1;
-				while((leng = is.read(data)) != -1) {
-				  b.append(new String(data, 0, leng));
-				}
-				String result = b.toString();
-				
-				Log.d(TAG, "HTTP_OK Result: " + result);
-				
-//            // TASK: Confirm upload with queue
-//            String logSessionID = "";
-//            String fileName = "";
-//            boolean success = false;
-//			try {
-//			    logSessionID = responseJSON.getString("logSessionID");
-//                fileName = responseJSON.getString("fileName");
-//                success = responseJSON.getBoolean("success");
-//			} catch (JSONException e) {
-//				// TODO Auto-generated catch block
-//				e.printStackTrace();
-//			}
-//            
-//            Log.v(TAG, "Received upload response from sessionID: " + logSessionID + " : " + fileName + " with success " + success);
-//            
-//            Iterator<FileToUpload> iterator = uploadQueue.iterator();
-//            FileToUpload fileInQueue = null;
-//            while ( iterator.hasNext() )
-//            {
-//            	fileInQueue = iterator.next();
-//                if (fileInQueue.fileName.equals(fileName) && fileInQueue.folderName.equals(logSessionID))
-//                {
-//                    break;
-//                }
-//                fileInQueue = null;
-//            }
-//
-//            if (fileInQueue != null)
-//            {
-//                String uploadedFilePath = fileInQueue.path;
-//                
-//                // Remove from upload queue
-//                uploadQueue.remove(fileInQueue);
-//                
-//                // Delete file
-//                File file = new File(uploadedFilePath);
-//                boolean deleteSuccess = file.delete();
-//                if (!deleteSuccess) Log.w(TAG, "Failed to remove file: " + uploadedFilePath);
-//                
-//                // Go upload next in queue
-//                if (shouldUpload) startFileUploads();
-//            }
-//            else
-//            {
-//                Log.w(TAG, "Upload data returned an upload file confirmation not in queue");
-//            }
-
-			}
-			else
-			{
-				String failureResponse = null;
-				try {
-					failureResponse = conn.getResponseMessage();
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-				
-				Log.w(TAG, "uploadData failed with response: " + failureResponse);
-				
-				// FIXME: Update queue info, ie. uploading false, upload start time null.
-				// How to do this, as we dont't have reference any more.
-			}
-		} catch (IOException e) {
+        try 
+        {
+        	JSONObject responseJSON = (JSONObject) new JSONTokener(result).nextValue();
+        
+		    String logSessionID = responseJSON.getString("logSessionID");
+            String fileName = responseJSON.getString("fileName");
+            boolean success = responseJSON.getBoolean("success");
+        	
+            Log.v(TAG, "Received upload response from sessionID: " + logSessionID + " : " + fileName + " with success " + success);
+            
+            if (success)
+            {
+                // Remove from upload queue
+                uploadQueue.remove(fileToUpload);
+                
+                // Delete file
+                boolean deleteSuccess = file.delete();
+                if (!deleteSuccess) Log.w(TAG, "Failed to remove file: " + fileToUpload.path);
+                
+                // Broadcast success
+    		    Intent intent = new Intent(TAGFileUploadedBroadcast);
+    			intent.putExtra(TAGFileUploadedExtraPath, fileToUpload.path);
+    			intent.putExtra(TAGFileUploadedExtraQueueSize, uploadQueue.size());
+    			LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+            }
+            else
+            {
+            	fileToUpload.uploadInProgress = false;
+            	
+            	// Move to end of queue
+            	uploadQueue.remove(fileToUpload);
+            	uploadQueue.add(fileToUpload);
+            }
+		} 
+        catch (JSONException e) 
+        {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
@@ -501,19 +421,5 @@ class ServerConnection {
 		}
     	
     	return endPointURL + inPath;
-    }
-    
-    private URL urlWithPath(String inPath)
-    {
-    	URL returnURL = null;
-    	
-		try {
-			returnURL = new URL(urlStringWithPath(inPath));
-		} catch (MalformedURLException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		
-		return returnURL;
     }
 }
