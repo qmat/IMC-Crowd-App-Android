@@ -2,9 +2,6 @@ package uk.ac.qmul.eecs.imccrowdapp;
 
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.util.Date;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -29,13 +26,12 @@ class FileToUpload {
     String          folderName;
     String          fileName;
     int             uploadStartCount;
-    java.util.Date	uploadStartTime;
+    long			uploadStartTime;
     boolean         uploadInProgress;
 }
 
 class ServerConnection {
     // Handles all communication to the server
-	
 	
 	private static final String TAG = "ServerConnection";
 	
@@ -131,11 +127,9 @@ class ServerConnection {
 	
 	void startSession()
 	{
-        Date nowDate = new java.util.Date();
-        
         RequestParams params = new RequestParams();
         params.put("sessionID", sessionID);
-        params.put("time", nowDate.toString());
+        params.put("time", String.valueOf(System.currentTimeMillis()));
                 
         httpClient.post(urlStringWithPath("/registerID"), params, new AsyncHttpResponseHandler() {
             @Override
@@ -167,7 +161,7 @@ class ServerConnection {
 	    newFileToUpload.folderName = fileObject.getParentFile().getName();
 	    newFileToUpload.fileName = fileObject.getName();;
 	    newFileToUpload.uploadStartCount = 0;
-	    newFileToUpload.uploadStartTime = null;
+	    newFileToUpload.uploadStartTime = 0;
 	    newFileToUpload.uploadInProgress = false;
 	    
 	    uploadQueue.add(newFileToUpload);
@@ -250,12 +244,12 @@ class ServerConnection {
             return;
         }
         
-        Date nowDate = new java.util.Date();
+        Long timeStamp = System.currentTimeMillis();
         
         RequestParams params = new RequestParams();
         
         params.put("uploadSessionID", sessionID);
-        params.put("time", nowDate.toString());
+        params.put("time", String.valueOf(timeStamp));
         params.put("folder", fileToUpload.folderName);
         
         File file = new File(fileToUpload.path);
@@ -267,7 +261,7 @@ class ServerConnection {
 		}
                 
         fileToUpload.uploadStartCount++;
-        fileToUpload.uploadStartTime = nowDate;
+        fileToUpload.uploadStartTime = timeStamp;
         fileToUpload.uploadInProgress = true;
         
         httpClient.post(urlStringWithPath("/uploadData"), params, new JsonHttpResponseHandler() {
@@ -341,13 +335,10 @@ class ServerConnection {
 				return null;
 			}};
 		
-		
-        Date nowDate = new java.util.Date();
-        
         RequestParams params = new RequestParams();
         
         params.put("uploadSessionID", sessionID);
-        params.put("time", nowDate.toString());
+        params.put("time", String.valueOf(System.currentTimeMillis()));
         params.put("folder", fileToUpload.folderName);
         
         File file = new File(fileToUpload.path);
@@ -359,7 +350,7 @@ class ServerConnection {
 		}
                 
         fileToUpload.uploadStartCount++;
-        fileToUpload.uploadStartTime = nowDate;
+        fileToUpload.uploadStartTime = System.currentTimeMillis();
         fileToUpload.uploadInProgress = true;
         
         String result = syncHttpClient.post(urlStringWithPath("/uploadData"), params);
