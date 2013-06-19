@@ -47,20 +47,23 @@ public class UploadFileService extends IntentService
 			startIntent.putExtra(TAGUploadFileServiceHandlingExtra, true);
 			LocalBroadcastManager.getInstance(this).sendBroadcast(startIntent);
 			
-			// TASK: Get subfolders, which should correspond to CrowdNodeService sessions
-			File[] sessionFolders = filesDir.listFiles();
+			// TASK: Get sessionID for upload (needed if uploading from 'No Session')
+			boolean sessionActive = serverConnection.startSessionBlocking();
 			
-			for (File sessionFolder : sessionFolders)
+			if (sessionActive)
 			{
-				if (!sessionFolder.isDirectory()) continue;
+				// TASK: Get subfolders, which should correspond to CrowdNodeService sessions
+				File[] sessionFolders = filesDir.listFiles();
 				
-				// FIXME: Upload doesn't succeed for "No Session"
-				if (sessionFolder.getName().equals("No Session")) continue;
-				
-				serverConnection.scanFolderForUpload(sessionFolder.getPath());
-				serverConnection.doFileUploadsBlocking();
-				
-				sessionFolder.delete();
+				for (File sessionFolder : sessionFolders)
+				{
+					if (!sessionFolder.isDirectory()) continue;
+					
+					serverConnection.scanFolderForUpload(sessionFolder.getPath());
+					serverConnection.doFileUploadsBlocking();
+					
+					sessionFolder.delete();
+				}
 			}
 			
 			Intent endIntent = new Intent(TAGUploadFileServiceBroadcast);

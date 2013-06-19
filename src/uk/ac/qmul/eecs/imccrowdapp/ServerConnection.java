@@ -151,7 +151,39 @@ class ServerConnection {
         });
 	}
     
-    
+	boolean startSessionBlocking()
+	{
+		SyncHttpClient syncHttpClient = new SyncHttpClient() {
+
+			@Override
+			public String onRequestFailed(Throwable arg0, String arg1) {
+				Log.w(TAG, "onRequestFailed: " + arg0.toString() + arg1);
+				return null;
+			}};
+		
+        RequestParams params = new RequestParams();
+        params.put("sessionID", sessionID);
+        params.put("time", String.valueOf(System.currentTimeMillis()));
+                
+        String responseString = syncHttpClient.post(urlStringWithPath("/registerID"), params);
+        
+        if (responseString == null)
+        {
+        	Log.w(TAG, "Blocking start session had no return");
+        	return false;
+        }
+        		
+        // For now, response body is plain text assigned sessionID
+    	Log.v(TAG, "registerID succeeded with response: " + responseString);
+        
+    	// TASK: Set new session ID. 
+    	// We have to set sessionActive first, as the change of sessionID fires the broadcast.
+    	if (validateSessionID(responseString)) sessionActive = true;
+    	setSessionID(responseString);
+    	
+    	return true;
+	}
+	
 	void addFileForUpload(String filePath)
 	{
 	    File fileObject = new File(filePath);
@@ -340,6 +372,7 @@ class ServerConnection {
         params.put("uploadSessionID", sessionID);
         params.put("time", String.valueOf(System.currentTimeMillis()));
         params.put("folder", fileToUpload.folderName);
+
         
         File file = new File(fileToUpload.path);
         try {
